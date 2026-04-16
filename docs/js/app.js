@@ -21,6 +21,7 @@ const uiState = {
   profileEditOpen: false,
   profileAuthor: null,
   profileSection: null,
+  profileLibraryTab: 'liked',
   profileExpanded: true,
   profileOrbitRotation: 0,
   profileOrbitDragSuppressUntil: 0,
@@ -140,6 +141,7 @@ function navigate(screen) {
     resetProfileAvatarDraft();
     uiState.profileAuthor = null;
     uiState.profileSection = null;
+    uiState.profileLibraryTab = 'liked';
     uiState.profileExpanded = true;
     uiState.profileOrbitRotation = 0;
   }
@@ -168,6 +170,7 @@ function openProfile(authorName) {
   uiState.profileEditOpen = false;
   uiState.profileAuthor = authorName || null;
   uiState.profileSection = null;
+  uiState.profileLibraryTab = 'liked';
   uiState.profileExpanded = true;
   uiState.profileOrbitRotation = 0;
   render();
@@ -860,6 +863,15 @@ function bindComposeEvents() {
     uiState.composeTemplateId = nextTemplateId;
   }
 
+  function focusSelectedTemplateCard(templateId) {
+    const selectedRadio = form.querySelector(`input[name="templateId"][value="${templateId}"]`);
+    selectedRadio?.closest('.template-option')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }
+
   function setPreviewImage(inputId) {
     const slotImage = document.querySelector(`[data-slot-image="${inputId}"]`);
     const slotPlaceholder = document.querySelector(`[data-slot-placeholder="${inputId}"]`);
@@ -888,9 +900,25 @@ function bindComposeEvents() {
   form.querySelectorAll('input[name="templateId"]').forEach((radio) => {
     radio.addEventListener('change', () => {
       setPreviewTemplate(radio.value);
+      focusSelectedTemplateCard(radio.value);
     });
   });
   setPreviewTemplate(uiState.composeTemplateId || form.querySelector('input[name="templateId"]:checked')?.value);
+  window.setTimeout(() => {
+    focusSelectedTemplateCard(uiState.composeTemplateId || form.querySelector('input[name="templateId"]:checked')?.value);
+  }, 0);
+
+  document.querySelectorAll('[data-template-carousel-nav]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const viewport = document.querySelector('[data-template-carousel]');
+      if (!viewport) return;
+      const direction = button.dataset.templateCarouselNav === 'next' ? 1 : -1;
+      viewport.scrollBy({
+        left: viewport.clientWidth * 0.72 * direction,
+        behavior: 'smooth',
+      });
+    });
+  });
 
   if (tagToggle && tagPanel) {
     tagToggle.addEventListener('click', () => {
@@ -1149,6 +1177,16 @@ function bindProfileEvents() {
         return;
       }
       uiState.profileSection = button.dataset.profileSection;
+      if (uiState.profileSection === 'library') {
+        uiState.profileLibraryTab = uiState.profileLibraryTab || 'liked';
+      }
+      renderScreen();
+    });
+  });
+
+  document.querySelectorAll('[data-profile-library-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      uiState.profileLibraryTab = button.dataset.profileLibraryTab || 'liked';
       renderScreen();
     });
   });

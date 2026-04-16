@@ -19,7 +19,13 @@
   position: relative;
   width: 100%;
   height: 100%;
-  --orbit-radius: clamp(142px, 29vw, 188px);
+  --core-size: clamp(92px, 21vw, 146px);
+  --node-size: clamp(88px, 19vw, 120px);
+  --orbit-safe-gap: 16px;
+  --orbit-radius: max(
+    calc((var(--core-size) / 2) + (var(--node-size) / 2) + var(--orbit-safe-gap)),
+    min(184px, calc(50% - (var(--node-size) / 2) - 10px))
+  );
 }
 
 .profile-orbit__core {
@@ -28,8 +34,8 @@
   left: 50%;
   transform: translate(-50%, -50%);
   padding: 0;
-  width: clamp(126px, 24vw, 154px);
-  height: clamp(126px, 24vw, 154px);
+  width: var(--core-size);
+  height: var(--core-size);
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(248, 223, 225, 0.92));
   border: 1px solid rgba(221, 192, 194, 0.9);
@@ -67,9 +73,9 @@
   display: grid;
   place-items: center;
   gap: 4px;
-  width: clamp(112px, 22vw, 132px);
-  height: clamp(112px, 22vw, 132px);
-  padding: 14px;
+  width: var(--node-size);
+  height: var(--node-size);
+  padding: 12px;
   border-radius: 50%;
   text-align: center;
   color: var(--text);
@@ -91,23 +97,30 @@
 }
 
 .profile-node__label {
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.3;
   color: var(--muted);
-  max-width: 72px;
+  max-width: 68px;
 }
 
 .profile-node__value {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.35;
   font-weight: 700;
-  max-width: 72px;
+  max-width: 68px;
   word-break: break-word;
 }
 
 .profile-node__value svg {
   width: 18px;
   height: 18px;
+}
+
+.profile-node__icon-pair {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .profile-section-panel {
@@ -161,6 +174,44 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.profile-library-tabs {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.profile-library-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 84px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(222, 201, 191, 0.9);
+  background: rgba(255, 248, 242, 0.72);
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-library-tab svg {
+  width: 15px;
+  height: 15px;
+}
+
+.profile-library-tab.is-active {
+  background: rgba(244, 218, 220, 0.92);
+  border-color: rgba(208, 170, 174, 0.96);
+  color: var(--text);
+}
+
+.profile-library-panel {
+  display: grid;
+  gap: 12px;
 }
 
 .profile-library-block {

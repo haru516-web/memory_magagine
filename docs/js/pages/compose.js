@@ -38,16 +38,26 @@ function renderPalette() {
 }
 
 function renderTemplatePicker(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
-  return COMPOSE_TEMPLATES.map((template) => `
-    <label class="template-option">
-      <input type="radio" name="templateId" value="${template.id}" ${selectedTemplateId === template.id ? 'checked' : ''} />
-      <span class="template-option__preview template-option__preview--${template.id}" aria-hidden="true"></span>
-      <span class="template-option__body">
-        <strong class="template-option__title">${template.label}</strong>
-        <span class="template-option__copy">${template.description}</span>
-      </span>
-    </label>
-  `).join('');
+  return `
+    <div class="template-carousel">
+      <button class="template-carousel__nav" type="button" data-template-carousel-nav="prev" aria-label="Previous template">&larr;</button>
+      <div class="template-carousel__viewport" data-template-carousel>
+        <div class="template-option-track">
+          ${COMPOSE_TEMPLATES.map((template) => `
+            <label class="template-option">
+              <input type="radio" name="templateId" value="${template.id}" ${selectedTemplateId === template.id ? 'checked' : ''} />
+              <span class="template-option__preview template-option__preview--${template.id}" aria-hidden="true"></span>
+              <span class="template-option__body">
+                <strong class="template-option__title">${template.label}</strong>
+                <span class="template-option__copy">${template.description}</span>
+              </span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      <button class="template-carousel__nav" type="button" data-template-carousel-nav="next" aria-label="Next template">&rarr;</button>
+    </div>
+  `;
 }
 
 function renderUploadSlot({ id, slotClass }) {
@@ -159,9 +169,7 @@ Add the memory you want to keep.</div>
           <div class="compose-group__head">
             <h3>Template</h3>
           </div>
-          <div class="template-option-grid">
-            ${renderTemplatePicker(selectedTemplateId)}
-          </div>
+          ${renderTemplatePicker(selectedTemplateId)}
         </section>
 
         <section class="compose-group">

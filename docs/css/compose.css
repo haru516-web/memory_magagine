@@ -449,10 +449,43 @@
   color: #8e5258;
 }
 
-.template-option-grid {
+.template-carousel {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
+  align-items: center;
+}
+
+.template-carousel__viewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.template-carousel__viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.template-carousel__nav {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(229, 206, 195, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.template-option-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 72%);
+  gap: 12px;
 }
 
 .template-option {
@@ -460,9 +493,11 @@
   display: grid;
   gap: 10px;
   padding: 12px;
+  min-width: 0;
   border-radius: 18px;
   border: 1px solid rgba(229, 206, 195, 0.95);
   background: rgba(255, 255, 255, 0.88);
+  scroll-snap-align: center;
 }
 
 .template-option input {
@@ -631,6 +666,16 @@
 
 .template-option input:checked ~ .template-option__body .template-option__title {
   color: #8e5258;
+}
+
+.template-option input:checked ~ .template-option__preview,
+.template-option input:checked ~ .template-option__body {
+  filter: none;
+}
+
+.template-option:has(input:checked) {
+  border-color: rgba(214, 140, 147, 0.7);
+  box-shadow: 0 12px 24px rgba(142, 82, 88, 0.12);
 }
 
 .compose-sheet[data-template='page2'] .compose-sheet__outline {
@@ -1154,7 +1199,15 @@
     height: 56px;
   }
 
-  .template-option-grid {
+  .template-carousel {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .template-carousel__nav {
+    display: none;
+  }
+
+  .template-option-track {
+    grid-auto-columns: 84%;
   }
 }

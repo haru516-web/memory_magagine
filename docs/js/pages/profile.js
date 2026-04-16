@@ -55,17 +55,18 @@ function renderOwnProfile(state, uiState, authors) {
   const followingAuthors = state.followingAuthors;
   const followerAuthors = authors.filter((author) => author !== state.profile.name);
   const activeSection = uiState.profileSection || '';
+  const activeLibraryTab = uiState.profileLibraryTab || 'liked';
   const showAvatarCropper = Boolean(uiState.profileAvatarCropOpen);
   const handle = toHandle(state.profile.name);
   const orbitRotation = Number(uiState.profileOrbitRotation || 0);
 
   const sectionMeta = {
     identity: { label: 'Name / ID', value: handle, angle: 0 },
-    library: { label: 'Likes / Saved', value: `${likedPosts.length} / ${savedPosts.length}`, angle: 60 },
+    library: { label: 'Likes / Saved', value: `<span class="profile-node__icon-pair">${getIcon('heart')}${getIcon('save')}</span>`, angle: 60 },
     edit: { label: 'Edit', value: 'profile', angle: 120 },
     posts: { label: 'Posts', value: String(ownPosts.length), angle: 180 },
     magazine: { label: 'Magazine', value: String(savedIssues.length), angle: 240 },
-    network: { label: 'Follow', value: `${followingAuthors.length} / ${followerAuthors.length}`, angle: 300 },
+    network: { label: 'Follow / Follower', value: `${followingAuthors.length} / ${followerAuthors.length}`, angle: 300 },
   };
 
   const sectionButtons = [
@@ -107,19 +108,9 @@ function renderOwnProfile(state, uiState, authors) {
             <div class="section-head">
               <h3>Follow / Follower</h3>
             </div>
-            <div class="profile-network-summary">
-              <article class="stat-card">
-                <span>Following</span>
-                <strong>${followingAuthors.length}</strong>
-              </article>
-              <article class="stat-card">
-                <span>Followers</span>
-                <strong>${followerAuthors.length}</strong>
-              </article>
-            </div>
-            <div class="profile-network-columns">
-              <div>
-                <p class="profile-column-title">Following</p>
+            <div class="profile-library-grid">
+              <section class="profile-library-block">
+                <p class="profile-column-title">Following ${followingAuthors.length}</p>
                 <div class="follow-list">
                   ${followingAuthors.length ? followingAuthors.map((author) => `
                     <article class="follow-item">
@@ -131,9 +122,9 @@ function renderOwnProfile(state, uiState, authors) {
                     </article>
                   `).join('') : '<p class="empty-copy">No following yet.</p>'}
                 </div>
-              </div>
-              <div>
-                <p class="profile-column-title">Followers</p>
+              </section>
+              <section class="profile-library-block">
+                <p class="profile-column-title">Followers ${followerAuthors.length}</p>
                 <div class="follow-list">
                   ${followerAuthors.length ? followerAuthors.map((author) => `
                     <article class="follow-item">
@@ -145,7 +136,7 @@ function renderOwnProfile(state, uiState, authors) {
                     </article>
                   `).join('') : '<p class="empty-copy">No followers yet.</p>'}
                 </div>
-              </div>
+              </section>
             </div>
           </section>
         `;
@@ -155,16 +146,16 @@ function renderOwnProfile(state, uiState, authors) {
             <div class="section-head">
               <h3>Likes / Saved</h3>
             </div>
-            <div class="profile-library-grid">
-              <section class="profile-library-block">
-                <p class="profile-column-title">Liked Posts</p>
-                ${renderPostFeed(likedPosts, 'Posts you liked will appear here.')}
-              </section>
-              <section class="profile-library-block">
-                <p class="profile-column-title">Saved Posts</p>
-                ${renderPostFeed(savedPosts, 'Posts you saved will appear here.')}
-              </section>
+            <div class="profile-library-tabs" role="tablist" aria-label="Likes and saved tabs">
+              <button class="profile-library-tab ${activeLibraryTab === 'liked' ? 'is-active' : ''}" type="button" data-profile-library-tab="liked" aria-pressed="${activeLibraryTab === 'liked' ? 'true' : 'false'}">${getIcon('heart')}<span>Like</span></button>
+              <button class="profile-library-tab ${activeLibraryTab === 'saved' ? 'is-active' : ''}" type="button" data-profile-library-tab="saved" aria-pressed="${activeLibraryTab === 'saved' ? 'true' : 'false'}">${getIcon('save')}<span>Save</span></button>
             </div>
+            <section class="profile-library-panel">
+              <p class="profile-column-title">${activeLibraryTab === 'liked' ? 'Liked Posts' : 'Saved Posts'}</p>
+              ${activeLibraryTab === 'liked'
+                ? renderPostFeed(likedPosts, 'Posts you liked will appear here.')
+                : renderPostFeed(savedPosts, 'Posts you saved will appear here.')}
+            </section>
           </section>
         `;
       case 'magazine':
