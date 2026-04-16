@@ -1,0 +1,9 @@
+.page--search {
+  gap: 16px;
+}
+
+.tag-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
