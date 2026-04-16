@@ -12,6 +12,28 @@ const defaultState = {
   followingAuthors: [],
 };
 
+function normalizePost(post) {
+  return {
+    id: post.id,
+    authorName: post.authorName || 'you',
+    authorIcon: post.authorIcon || (post.authorName || 'U').trim().slice(0, 1).toUpperCase(),
+    authorAvatarData: post.authorAvatarData || '',
+    caption: post.caption || '',
+    imageData: post.imageData || '',
+    fixedTags: Array.isArray(post.fixedTags) ? post.fixedTags : [],
+    freeTags: Array.isArray(post.freeTags) ? post.freeTags : [],
+    likes: Number(post.likes || 0),
+    saves: Number(post.saves || 0),
+    comments: Array.isArray(post.comments) ? post.comments : [],
+    impressions: Number(post.impressions || 0),
+    liked: Boolean(post.liked),
+    saved: Boolean(post.saved),
+    createdAt: post.createdAt || new Date().toISOString(),
+    updatedAt: post.updatedAt || null,
+    composeData: post.composeData || null,
+  };
+}
+
 function normalizeState(saved) {
   if (!saved) return structuredClone(defaultState);
   return {
@@ -20,7 +42,7 @@ function normalizeState(saved) {
       bio: saved.profile?.bio || defaultState.profile.bio,
       avatarData: saved.profile?.avatarData || '',
     },
-    posts: Array.isArray(saved.posts) ? saved.posts : [],
+    posts: Array.isArray(saved.posts) ? saved.posts.map(normalizePost) : [],
     issues: Array.isArray(saved.issues) ? saved.issues : [],
     followingAuthors: Array.isArray(saved.followingAuthors) ? saved.followingAuthors : [],
   };
@@ -55,7 +77,23 @@ export function addPost(post) {
     liked: false,
     saved: false,
     createdAt: new Date().toISOString(),
+    updatedAt: null,
+    composeData: post.composeData || null,
   });
+  commit(next);
+}
+
+export function updatePost(postId, updates) {
+  const next = structuredClone(state);
+  const post = next.posts.find((item) => item.id === postId);
+  if (!post) return;
+
+  post.caption = updates.caption ?? post.caption;
+  post.imageData = updates.imageData ?? post.imageData;
+  post.fixedTags = Array.isArray(updates.fixedTags) ? updates.fixedTags : post.fixedTags;
+  post.freeTags = Array.isArray(updates.freeTags) ? updates.freeTags : post.freeTags;
+  post.composeData = updates.composeData ?? post.composeData;
+  post.updatedAt = new Date().toISOString();
   commit(next);
 }
 

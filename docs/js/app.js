@@ -1,6 +1,6 @@
 import { renderBottomNav } from './components/bottomNav.js';
 import { renderCommentsModal } from './components/modals.js';
-import { getState, addPost, deletePost, toggleLike, toggleSave, addComment, addImpression, updateProfile, toggleFollow, saveIssue } from './core/store.js';
+import { getState, addPost, updatePost, deletePost, toggleLike, toggleSave, addComment, addImpression, updateProfile, toggleFollow, saveIssue } from './core/store.js';
 import { renderOpening } from './pages/opening.js';
 import { renderTimeline } from './pages/timeline.js';
 import { renderSearch } from './pages/search.js';
@@ -9,6 +9,7 @@ import { renderMagazine } from './pages/magazine.js';
 import { renderProfile } from './pages/profile.js';
 import { renderPostDetail } from './pages/postDetail.js';
 import { DEFAULT_COMPOSE_TEMPLATE, getComposeTemplateById } from './templates/index.js';
+import { computePage8ResolvedLayout, normalizePage8ImageBoxes, normalizePage8Options, page8RectToPercent, PAGE8_BOUNDS } from './templates/page8Layout.js';
 import { cropFileToCirclePngDataUrl, fileToPreviewUrl } from './utils/image.js';
 
 const uiState = {
@@ -26,8 +27,8 @@ const uiState = {
   profileOrbitRotation: 0,
   profileOrbitDragSuppressUntil: 0,
   profileAvatarCropOpen: false,
-  bottomNavExpanded: false,
   composeTemplateId: DEFAULT_COMPOSE_TEMPLATE,
+  composeEditingPostId: null,
   openingTapGuardUntil: 0,
   postReturnScreen: 'timeline',
   postReturnProfileAuthor: null,
@@ -70,7 +71,11 @@ function getPageHtml() {
     case 'search':
       return renderSearch(state, uiState);
     case 'compose':
-      return renderCompose(uiState.composeTemplateId);
+      return renderCompose({
+        selectedTemplateId: uiState.composeTemplateId,
+        draft: getActivePost(uiState.composeEditingPostId)?.composeData || null,
+        isEditing: Boolean(uiState.composeEditingPostId),
+      });
     case 'magazine':
       return renderMagazine(state);
     case 'profile':
@@ -134,16 +139,19 @@ function navigate(screen) {
   if (screen !== 'profile') {
     resetProfileAvatarDraft();
   }
+  if (screen !== 'compose') {
+    uiState.composeEditingPostId = null;
+  }
   uiState.screen = screen;
   uiState.previewPostId = null;
   uiState.commentPostId = null;
   if (screen === 'profile') {
     resetProfileAvatarDraft();
     uiState.profileAuthor = null;
-    uiState.profileSection = null;
+    uiState.profileSection = 'identity';
     uiState.profileLibraryTab = 'liked';
     uiState.profileExpanded = true;
-    uiState.profileOrbitRotation = 0;
+    uiState.profileOrbitRotation = 270;
   }
   if (screen !== 'profile') {
     uiState.profileEditOpen = false;
@@ -153,7 +161,6 @@ function navigate(screen) {
 }
 
 function enterTimelineFromOpening() {
-  uiState.bottomNavExpanded = false;
   uiState.previewPostId = null;
   uiState.commentPostId = null;
   uiState.openingTapGuardUntil = Date.now() + 700;
@@ -169,10 +176,10 @@ function openProfile(authorName) {
   uiState.commentPostId = null;
   uiState.profileEditOpen = false;
   uiState.profileAuthor = authorName || null;
-  uiState.profileSection = null;
+  uiState.profileSection = authorName ? null : 'identity';
   uiState.profileLibraryTab = 'liked';
   uiState.profileExpanded = true;
-  uiState.profileOrbitRotation = 0;
+  uiState.profileOrbitRotation = authorName ? 0 : 270;
   render();
 }
 
@@ -181,6 +188,17 @@ function openPostDetail(postId) {
   uiState.postReturnProfileAuthor = uiState.profileAuthor;
   uiState.screen = 'post';
   uiState.previewPostId = postId;
+  uiState.commentPostId = null;
+  render();
+}
+
+function openPostEdit(postId) {
+  const post = getActivePost(postId);
+  if (!post || !isOwnPost(post)) return;
+  uiState.composeEditingPostId = postId;
+  uiState.composeTemplateId = post.composeData?.templateId || DEFAULT_COMPOSE_TEMPLATE;
+  uiState.screen = 'compose';
+  uiState.previewPostId = null;
   uiState.commentPostId = null;
   render();
 }
@@ -476,16 +494,114 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
 }
 
 function bindNavEvents() {
-  document.querySelectorAll('[data-nav-toggle]').forEach((button) => {
-    button.addEventListener('click', () => {
-      uiState.bottomNavExpanded = !uiState.bottomNavExpanded;
-      render();
-    });
-  });
+  const wheels = [
+    {
+      element: document.querySelector('[data-side-wheel="main"]'),
+      getItems: () => Array.from(document.querySelectorAll('[data-side-wheel="main"] [data-side-nav-screen]')),
+      getActiveKey: () => (['timeline', 'search', 'compose', 'profile'].includes(uiState.screen) ? uiState.screen : (uiState.postReturnScreen || 'timeline')),
+      applySelection: (key) => {
+        if (uiState.screen === key) {
+          render();
+          return;
+        }
+        navigate(key);
+      },
+    },
+    {
+      element: document.querySelector('[data-side-wheel="timeline"]'),
+      getItems: () => Array.from(document.querySelectorAll('[data-side-wheel="timeline"] [data-side-nav-tab]')),
+      getActiveKey: () => uiState.timelineTab || 'recommended',
+      applySelection: (key) => {
+        uiState.timelineTab = key;
+        render();
+      },
+    },
+    {
+      element: document.querySelector('[data-side-wheel="profile"]'),
+      getItems: () => Array.from(document.querySelectorAll('[data-side-wheel="profile"] [data-side-nav-profile-section]')),
+      getActiveKey: () => uiState.profileSection || 'identity',
+      applySelection: (key) => {
+        uiState.profileSection = key;
+        if (uiState.profileSection === 'library') {
+          uiState.profileLibraryTab = uiState.profileLibraryTab || 'liked';
+        }
+        render();
+      },
+    },
+  ].filter((entry) => entry.element);
 
-  document.querySelectorAll('[data-nav]').forEach((button) => {
-    button.addEventListener('click', () => {
-      navigate(button.dataset.nav);
+  wheels.forEach((wheelConfig) => {
+    const { element, getItems, applySelection, getActiveKey } = wheelConfig;
+    const buttons = getItems();
+    if (!buttons.length) return;
+
+    const items = buttons.map((button, index) => ({
+      button,
+      key: button.dataset.sideNavScreen || button.dataset.sideNavTab || button.dataset.sideNavProfileSection,
+      index,
+    }));
+
+    const applyWheelLayout = (focusIndex, isEngaged) => {
+      const anchorX = element.classList.contains('side-wheel--left') ? 76 : 24;
+      const stepY = items.length <= 2 ? 88 : 76;
+
+      items.forEach((entry) => {
+        const y = (entry.index - focusIndex) * stepY;
+        const opacity = isEngaged ? 1 : (entry.index === focusIndex ? 1 : 0);
+        const scale = isEngaged ? (entry.index === focusIndex ? 1 : 0.9) : 1;
+
+        entry.button.style.setProperty('--slot-x', `${anchorX}%`);
+        entry.button.style.setProperty('--slot-y', `${y}px`);
+        entry.button.style.setProperty('--slot-scale', String(scale));
+        entry.button.style.setProperty('--slot-opacity', String(opacity));
+        entry.button.style.setProperty('--slot-depth', String(Math.abs(entry.index - focusIndex)));
+        entry.button.classList.toggle('is-active', entry.index === focusIndex);
+      });
+    };
+
+    const currentIndex = Math.max(0, items.findIndex((item) => item.key === getActiveKey()));
+    applyWheelLayout(currentIndex, false);
+
+    let engaged = false;
+    let focusIndex = currentIndex;
+
+    const openWheel = () => {
+      engaged = true;
+      element.classList.add('is-engaged');
+      applyWheelLayout(focusIndex, true);
+    };
+
+    const closeWheel = () => {
+      engaged = false;
+      element.classList.remove('is-engaged');
+      applyWheelLayout(focusIndex, false);
+    };
+
+    const commitSelection = (nextIndex = focusIndex) => {
+      focusIndex = nextIndex;
+      const selected = items[focusIndex];
+      if (!selected) {
+        closeWheel();
+        return;
+      }
+      applySelection(selected.key);
+    };
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        const buttonIndex = Number(button.dataset.sideIndex || 0);
+        if (!engaged) {
+          if (buttonIndex !== focusIndex) return;
+          openWheel();
+          return;
+        }
+        if (buttonIndex === focusIndex) {
+          closeWheel();
+          return;
+        }
+        commitSelection(buttonIndex);
+      });
     });
   });
 }
@@ -542,12 +658,6 @@ function bindPostInteractions(scope = document) {
 }
 
 function bindTimelineEvents() {
-  document.querySelectorAll('[data-tab]').forEach((button) => {
-    button.addEventListener('click', () => {
-      uiState.timelineTab = button.dataset.tab;
-      renderScreen();
-    });
-  });
   bindPostInteractions(document.getElementById('screenArea'));
 }
 
@@ -643,7 +753,16 @@ function clipRoundedRect(ctx, x, y, width, height, radius) {
 }
 
 async function drawFileCover(ctx, file, rect, position = { x: 0.5, y: 0.5 }) {
-  const bitmap = await createImageBitmap(file);
+  if (!file) return;
+
+  const bitmap = typeof file === 'string'
+    ? await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = file;
+    })
+    : await createImageBitmap(file);
   const imageRatio = bitmap.width / bitmap.height;
   const rectRatio = rect.width / rect.height;
   let sx = 0;
@@ -692,15 +811,25 @@ function drawSlotPlaceholder(ctx, rect) {
 }
 
 async function renderComposeTemplate(values, files) {
-  const width = 1240;
-  const height = 1754;
+  const designWidth = 1240;
+  const designHeight = 1754;
+  const width = 2480;
+  const height = 3508;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return '';
+  }
+
+  const scale = width / designWidth;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   ctx.fillStyle = values.backgroundColor || '#f8f4ee';
   ctx.fillRect(0, 0, width, height);
+  ctx.scale(scale, scale);
   const template = getComposeTemplateById(values.templateId);
   await template.render(ctx, values, files, {
     addWrappedText,
@@ -710,7 +839,7 @@ async function renderComposeTemplate(values, files) {
     defaults: composePreviewDefaults,
   });
 
-  return canvas.toDataURL('image/webp', 0.92);
+  return canvas.toDataURL('image/png');
 }
 
 function bindComposeEvents() {
@@ -719,6 +848,8 @@ function bindComposeEvents() {
 
   const composePage = document.querySelector('.page--compose');
   const composeSheet = document.getElementById('composeSheet');
+  const composeFrame = composeSheet?.querySelector('.compose-sheet__frame') || null;
+  const composeDraft = getActivePost(uiState.composeEditingPostId)?.composeData || null;
   const previewUrls = {
     imageInputPrimary: '',
     imageInputSecondary: '',
@@ -732,7 +863,26 @@ function bindComposeEvents() {
   const tagToggle = document.querySelector('[data-toggle-compose-tags]');
   const tagPanel = document.querySelector('[data-compose-tags]');
   const previewToggle = document.querySelector('[data-toggle-compose-preview]');
+  const customTemplateControls = document.querySelector('[data-custom-template-controls]');
   const editables = Array.from(document.querySelectorAll('[data-editable]'));
+  const customLayoutState = {
+    options: normalizePage8Options(composeDraft?.customLayout || {}),
+    imageBoxes: normalizePage8ImageBoxes(composeDraft?.customLayout || {}),
+    resolved: null,
+  };
+  const editableKeyMap = {
+    headline: document.querySelector('[data-editable="headline"]'),
+    subhead: document.querySelector('[data-editable="subhead"]'),
+    intro: document.querySelector('[data-editable="intro"]'),
+    body: document.querySelector('[data-editable="body"]'),
+    date: document.querySelector('[data-editable="date"]'),
+    editor: document.querySelector('[data-editable="editor"]'),
+  };
+  const slotKeyMap = {
+    primary: document.querySelector('[data-slot="imageInputPrimary"]'),
+    secondary: document.querySelector('[data-slot="imageInputSecondary"]'),
+    accent: document.querySelector('[data-slot="imageInputAccent"]'),
+  };
 
   function loadImageSize(file) {
     return new Promise((resolve) => {
@@ -854,6 +1004,10 @@ function bindComposeEvents() {
     if (!composeSheet) return;
     const checked = form.querySelector('input[name="backgroundColor"]:checked');
     composeSheet.style.setProperty('--sheet-bg', checked?.value || '#f8f4ee');
+    form.querySelectorAll('.color-chip').forEach((chip) => {
+      const input = chip.querySelector('input[name="backgroundColor"]');
+      chip.classList.toggle('is-active', Boolean(input?.checked));
+    });
   }
 
   function setPreviewTemplate(templateId) {
@@ -861,11 +1015,30 @@ function bindComposeEvents() {
     const nextTemplateId = templateId || DEFAULT_COMPOSE_TEMPLATE;
     composeSheet.dataset.template = nextTemplateId;
     uiState.composeTemplateId = nextTemplateId;
+    form.querySelectorAll('.template-thumb').forEach((card) => {
+      const input = card.querySelector('input[name="templateId"]');
+      card.classList.toggle('is-active', input?.value === nextTemplateId);
+    });
+    const isCustomTemplate = nextTemplateId === 'page8';
+    if (customTemplateControls) {
+      customTemplateControls.hidden = !isCustomTemplate;
+    }
+    composeSheet.classList.toggle('compose-sheet--custom', isCustomTemplate);
+    applyCustomLayout();
   }
 
   function focusSelectedTemplateCard(templateId) {
     const selectedRadio = form.querySelector(`input[name="templateId"][value="${templateId}"]`);
-    selectedRadio?.closest('.template-option')?.scrollIntoView({
+    selectedRadio?.closest('.template-thumb')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }
+
+  function focusSelectedColorCard(colorValue) {
+    const selectedRadio = form.querySelector(`input[name="backgroundColor"][value="${colorValue}"]`);
+    selectedRadio?.closest('.color-chip')?.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',
       inline: 'center',
@@ -892,10 +1065,91 @@ function bindComposeEvents() {
     removeButton.hidden = true;
   }
 
+  function applyCustomLayout() {
+    if (!composeSheet || !composeFrame) return;
+    const isCustomTemplate = composeSheet.dataset.template === 'page8';
+
+    Object.values(slotKeyMap).forEach((slot) => {
+      if (!slot) return;
+      slot.style.left = '';
+      slot.style.top = '';
+      slot.style.width = '';
+      slot.style.height = '';
+    });
+
+    Object.entries(editableKeyMap).forEach(([key, element]) => {
+      if (!element) return;
+      element.style.left = '';
+      element.style.top = '';
+      element.style.width = '';
+      element.style.height = '';
+      element.style.fontSize = '';
+      element.style.lineHeight = '';
+      element.style.textAlign = '';
+      if (key === 'editor') {
+        element.style.right = '';
+      }
+      if (key === 'body') {
+        element.style.bottom = '';
+      }
+      if (key === 'date') {
+        element.style.bottom = '';
+      }
+    });
+
+    if (!isCustomTemplate) {
+      customLayoutState.resolved = null;
+      return;
+    }
+
+    customLayoutState.options = {
+      densityMode: form.querySelector('input[name="customDensityMode"]:checked')?.value || customLayoutState.options.densityMode,
+      recoveryMode: form.querySelector('input[name="customRecoveryMode"]:checked')?.value || customLayoutState.options.recoveryMode,
+    };
+
+    const previousResolved = customLayoutState.options.recoveryMode === 'keep' ? customLayoutState.resolved : null;
+    const resolved = computePage8ResolvedLayout({
+      ...customLayoutState.options,
+      imageBoxes: customLayoutState.imageBoxes,
+    }, previousResolved);
+    customLayoutState.resolved = resolved;
+
+    Object.entries(resolved.imageBoxes).forEach(([key, box]) => {
+      const slot = slotKeyMap[key];
+      if (!slot) return;
+      const rect = page8RectToPercent(box);
+      slot.style.left = rect.left;
+      slot.style.top = rect.top;
+      slot.style.width = rect.width;
+      slot.style.height = rect.height;
+    });
+
+    Object.entries(resolved.textBlocks).forEach(([key, block]) => {
+      const target = editableKeyMap[key];
+      if (!target) return;
+      const rect = page8RectToPercent(block.rect);
+      target.style.left = rect.left;
+      target.style.top = rect.top;
+      target.style.width = rect.width;
+      target.style.height = rect.height;
+      target.style.fontSize = `${Math.max(11, block.fontSize / 1.6)}px`;
+      target.style.lineHeight = `${Math.max(1.25, block.lineHeight / Math.max(1, block.fontSize))}`;
+      target.style.textAlign = block.align;
+      target.style.right = 'auto';
+      target.style.bottom = 'auto';
+    });
+  }
+
   form.querySelectorAll('input[name="backgroundColor"]').forEach((radio) => {
-    radio.addEventListener('change', setPreviewBackground);
+    radio.addEventListener('change', () => {
+      setPreviewBackground();
+      focusSelectedColorCard(radio.value);
+    });
   });
   setPreviewBackground();
+  window.setTimeout(() => {
+    focusSelectedColorCard(form.querySelector('input[name="backgroundColor"]:checked')?.value);
+  }, 0);
 
   form.querySelectorAll('input[name="templateId"]').forEach((radio) => {
     radio.addEventListener('change', () => {
@@ -920,6 +1174,18 @@ function bindComposeEvents() {
     });
   });
 
+  document.querySelectorAll('[data-color-carousel-nav]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const viewport = document.querySelector('[data-color-carousel]');
+      if (!viewport) return;
+      const direction = button.dataset.colorCarouselNav === 'next' ? 1 : -1;
+      viewport.scrollBy({
+        left: viewport.clientWidth * 0.72 * direction,
+        behavior: 'smooth',
+      });
+    });
+  });
+
   if (tagToggle && tagPanel) {
     tagToggle.addEventListener('click', () => {
       const nextHidden = !tagPanel.hidden;
@@ -936,6 +1202,12 @@ function bindComposeEvents() {
   }
 
   setPreviewMode(false);
+
+  form.querySelectorAll('input[name="customDensityMode"], input[name="customRecoveryMode"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      applyCustomLayout();
+    });
+  });
 
   [
     { inputId: 'imageInputPrimary', stateKey: 'primary' },
@@ -980,9 +1252,29 @@ function bindComposeEvents() {
       let dragState = null;
 
       slot.addEventListener('pointerdown', (event) => {
-        if (!selectedFiles[stateKey].file || composePage?.classList.contains('is-preview-mode')) return;
+        if (composePage?.classList.contains('is-preview-mode')) return;
+        if (composeSheet?.dataset.template === 'page8') {
+          const boxState = customLayoutState.imageBoxes[stateKey];
+          if (!boxState || !composeFrame) return;
+          const frameRect = composeFrame.getBoundingClientRect();
+          dragState = {
+            pointerId: event.pointerId,
+            mode: 'move-box',
+            startX: event.clientX,
+            startY: event.clientY,
+            originX: boxState.x,
+            originY: boxState.y,
+            frameWidth: frameRect.width,
+            frameHeight: frameRect.height,
+          };
+          slot.classList.add('is-dragging');
+          slot.setPointerCapture?.(event.pointerId);
+          return;
+        }
+        if (!selectedFiles[stateKey].file) return;
         dragState = {
           pointerId: event.pointerId,
+          mode: 'pan-image',
           startX: event.clientX,
           startY: event.clientY,
           originX: selectedFiles[stateKey].position.x,
@@ -994,6 +1286,15 @@ function bindComposeEvents() {
 
       slot.addEventListener('pointermove', (event) => {
         if (!dragState || dragState.pointerId !== event.pointerId) return;
+        if (dragState.mode === 'move-box') {
+          const nextX = dragState.originX + ((event.clientX - dragState.startX) / dragState.frameWidth);
+          const nextY = dragState.originY + ((event.clientY - dragState.startY) / dragState.frameHeight);
+          const boxState = customLayoutState.imageBoxes[stateKey];
+          boxState.x = Math.min(PAGE8_BOUNDS.x + PAGE8_BOUNDS.width - boxState.width, Math.max(PAGE8_BOUNDS.x, nextX));
+          boxState.y = Math.min(PAGE8_BOUNDS.y + PAGE8_BOUNDS.height - boxState.height, Math.max(PAGE8_BOUNDS.y, nextY));
+          applyCustomLayout();
+          return;
+        }
         const slotRect = slot.getBoundingClientRect();
         const size = selectedFiles[stateKey].imageSize;
         if (!size) return;
@@ -1026,6 +1327,8 @@ function bindComposeEvents() {
     setPreviewImage(inputId);
     updateSlotPosition(inputId);
   });
+
+  applyCustomLayout();
 
   editables.forEach((element) => {
     element.dataset.previousValue = getEditableText(element);
@@ -1101,6 +1404,12 @@ function bindComposeEvents() {
       body: getEditableValue('body'),
       date: getEditableValue('date'),
       editor: getEditableValue('editor'),
+      customLayout: composeSheet?.dataset.template === 'page8'
+        ? {
+          ...customLayoutState.options,
+          imageBoxes: customLayoutState.imageBoxes,
+        }
+        : null,
     };
 
     const imageData = await renderComposeTemplate(values, selectedFiles);
@@ -1112,6 +1421,11 @@ function bindComposeEvents() {
       imageData,
       fixedTags,
       freeTags,
+      composeData: {
+        ...values,
+        fixedTags,
+        freeTags,
+      },
     });
 
     uiState.screen = 'timeline';
@@ -1173,9 +1487,6 @@ function bindProfileEvents() {
 
   document.querySelectorAll('[data-profile-section]').forEach((button) => {
     button.addEventListener('click', () => {
-      if (Date.now() < uiState.profileOrbitDragSuppressUntil) {
-        return;
-      }
       uiState.profileSection = button.dataset.profileSection;
       if (uiState.profileSection === 'library') {
         uiState.profileLibraryTab = uiState.profileLibraryTab || 'liked';
@@ -1190,68 +1501,6 @@ function bindProfileEvents() {
       renderScreen();
     });
   });
-
-  const orbit = document.querySelector('[data-profile-orbit]');
-  if (orbit) {
-    const applyOrbitRotation = (rotation) => {
-      orbit.style.setProperty('--orbit-rotation', `${rotation}deg`);
-      orbit.querySelectorAll('[data-orbit-angle]').forEach((node) => {
-        const baseAngle = Number(node.dataset.orbitAngle || 0);
-        node.style.setProperty('--node-counter-angle', `${-(baseAngle + rotation)}deg`);
-      });
-    };
-
-    applyOrbitRotation(uiState.profileOrbitRotation || 0);
-
-    let dragState = null;
-    const getPointerAngle = (event) => {
-      const rect = orbit.getBoundingClientRect();
-      const centerX = rect.left + (rect.width / 2);
-      const centerY = rect.top + (rect.height / 2);
-      return Math.atan2(event.clientY - centerY, event.clientX - centerX) * (180 / Math.PI);
-    };
-
-    const normalizeAngleDelta = (value) => {
-      let delta = value;
-      while (delta > 180) delta -= 360;
-      while (delta < -180) delta += 360;
-      return delta;
-    };
-
-    orbit.addEventListener('pointerdown', (event) => {
-      dragState = {
-        pointerId: event.pointerId,
-        startAngle: getPointerAngle(event),
-        startRotation: uiState.profileOrbitRotation || 0,
-        moved: false,
-      };
-      orbit.classList.add('is-rotating');
-      orbit.setPointerCapture?.(event.pointerId);
-    });
-
-    orbit.addEventListener('pointermove', (event) => {
-      if (!dragState || dragState.pointerId !== event.pointerId) return;
-      const delta = normalizeAngleDelta(getPointerAngle(event) - dragState.startAngle);
-      if (Math.abs(delta) > 3) {
-        dragState.moved = true;
-      }
-      uiState.profileOrbitRotation = dragState.startRotation + delta;
-      applyOrbitRotation(uiState.profileOrbitRotation);
-    });
-
-    const finishOrbitDrag = (event) => {
-      if (!dragState || dragState.pointerId !== event.pointerId) return;
-      if (dragState.moved) {
-        uiState.profileOrbitDragSuppressUntil = Date.now() + 160;
-      }
-      dragState = null;
-      orbit.classList.remove('is-rotating');
-      orbit.releasePointerCapture?.(event.pointerId);
-    };
-
-    orbit.addEventListener('pointerup', finishOrbitDrag);
-    orbit.addEventListener('pointercancel', finishOrbitDrag);
-  }
 
   const avatarInput = document.getElementById('profileAvatarInput');
   const cropper = document.getElementById('avatarCropper');

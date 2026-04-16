@@ -5,6 +5,7 @@ import { page4Template } from './page4.js';
 import { page5Template } from './page5.js';
 import { page6Template } from './page6.js';
 import { page7Template } from './page7.js';
+import { page8Template } from './page8.js';
 
 export const COMPOSE_TEMPLATES = [
   page1Template,
@@ -14,6 +15,7 @@ export const COMPOSE_TEMPLATES = [
   page5Template,
   page6Template,
   page7Template,
+  page8Template,
 ];
 
 export const DEFAULT_COMPOSE_TEMPLATE = page1Template.id;

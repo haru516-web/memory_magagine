@@ -54,29 +54,25 @@ function renderOwnProfile(state, uiState, authors) {
   const savedIssues = state.issues || [];
   const followingAuthors = state.followingAuthors;
   const followerAuthors = authors.filter((author) => author !== state.profile.name);
-  const activeSection = uiState.profileSection || '';
+  const activeSection = uiState.profileSection || 'identity';
   const activeLibraryTab = uiState.profileLibraryTab || 'liked';
   const showAvatarCropper = Boolean(uiState.profileAvatarCropOpen);
   const handle = toHandle(state.profile.name);
-  const orbitRotation = Number(uiState.profileOrbitRotation || 0);
+  const avatarMarkup = renderAvatarContent(
+    state.profile.avatarData,
+    (state.profile.name || 'Y').slice(0, 1).toUpperCase(),
+    `${state.profile.name} avatar`,
+  );
 
   const sectionMeta = {
-    identity: { label: 'Name / ID', value: handle, angle: 0 },
+    identity: { label: 'Name / ID', value: `<span class="profile-node__avatar">${avatarMarkup}</span>`, angle: 0, centerLabel: '' },
     library: { label: 'Likes / Saved', value: `<span class="profile-node__icon-pair">${getIcon('heart')}${getIcon('save')}</span>`, angle: 60 },
     edit: { label: 'Edit', value: 'profile', angle: 120 },
     posts: { label: 'Posts', value: String(ownPosts.length), angle: 180 },
     magazine: { label: 'Magazine', value: String(savedIssues.length), angle: 240 },
     network: { label: 'Follow / Follower', value: `${followingAuthors.length} / ${followerAuthors.length}`, angle: 300 },
   };
-
-  const sectionButtons = [
-    ['identity', sectionMeta.identity],
-    ['library', sectionMeta.library],
-    ['edit', sectionMeta.edit],
-    ['posts', sectionMeta.posts],
-    ['magazine', sectionMeta.magazine],
-    ['network', sectionMeta.network],
-  ];
+  const activeMeta = sectionMeta[activeSection] || sectionMeta.identity;
 
   function renderSectionPanel() {
     switch (activeSection) {
@@ -237,30 +233,12 @@ function renderOwnProfile(state, uiState, authors) {
 
       <section
         class="profile-orbit-shell"
-        data-profile-orbit
-        style="--orbit-rotation: ${orbitRotation}deg;"
       >
         <div class="profile-orbit">
-          <div class="profile-orbit__core" aria-hidden="true">
-            <div class="profile-orbit__core-avatar">
-              ${renderAvatarContent(state.profile.avatarData, (state.profile.name || 'Y').slice(0, 1).toUpperCase(), `${state.profile.name} avatar`)}
-            </div>
+          <div class="profile-orbit__display ${activeSection === 'identity' ? 'is-identity' : ''}">
+            ${activeMeta.centerLabel !== '' ? `<span class="profile-orbit__display-label">${activeMeta.label}</span>` : ''}
+            <strong class="profile-orbit__display-value">${activeMeta.value}</strong>
           </div>
-
-          ${sectionButtons.map(([key, meta]) => `
-            <div class="profile-node-slot" style="--orbit-angle: ${meta.angle}deg;">
-              <button
-                class="profile-node ${activeSection === key ? 'is-active' : ''}"
-                type="button"
-                data-profile-section="${key}"
-                data-orbit-angle="${meta.angle}"
-                style="--node-counter-angle: ${-(meta.angle + orbitRotation)}deg;"
-              >
-                <span class="profile-node__label">${meta.label}</span>
-                <strong class="profile-node__value">${key === 'edit' ? getIcon('compose') : meta.value}</strong>
-              </button>
-            </div>
-          `).join('')}
         </div>
       </section>
 

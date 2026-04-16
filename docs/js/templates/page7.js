@@ -25,7 +25,7 @@ export const page7Template = {
       y: frame.y + (frame.height * 0.15),
       width: frame.width * 0.3,
       height: frame.height * 0.18,
-      radius: 18,
+      radius: 0,
     };
 
     const secondarySlot = {
@@ -33,7 +33,7 @@ export const page7Template = {
       y: frame.y + (frame.height * 0.48),
       width: frame.width * 0.3,
       height: frame.height * 0.18,
-      radius: 18,
+      radius: 0,
     };
 
     const accentSlot = {
@@ -41,7 +41,7 @@ export const page7Template = {
       y: frame.y + (frame.height * 0.75),
       width: frame.width * 0.3,
       height: frame.height * 0.18,
-      radius: 18,
+      radius: 0,
     };
 
     if (files.primary.file) {

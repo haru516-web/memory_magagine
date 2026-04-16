@@ -1,6 +1,7 @@
 import { TAG_GROUPS, TAG_GROUP_LABELS } from '../data/tags.js';
 import { COMPOSE_TEMPLATES, DEFAULT_COMPOSE_TEMPLATE } from '../templates/index.js';
 import { getIcon } from '../components/icons.js';
+import { PAGE8_DEFAULT_OPTIONS } from '../templates/page8Layout.js';
 
 const TEMPLATE_COLORS = [
   { value: '#f8f4ee', label: 'Ivory' },
@@ -9,7 +10,7 @@ const TEMPLATE_COLORS = [
   { value: '#e5ece7', label: 'Sage' },
 ];
 
-function renderGroup(groupKey, options) {
+function renderGroup(groupKey, options, selectedTags = []) {
   return `
     <section class="compose-group compose-group--tags">
       <div class="compose-group__head">
@@ -18,7 +19,7 @@ function renderGroup(groupKey, options) {
       <div class="tag-select-grid">
         ${options.map((tag) => `
           <label class="tag-check">
-            <input type="checkbox" name="fixedTags" value="${tag}" />
+            <input type="checkbox" name="fixedTags" value="${tag}" ${selectedTags.includes(tag) ? 'checked' : ''} />
             <span>${tag}</span>
           </label>
         `).join('')}
@@ -27,35 +28,41 @@ function renderGroup(groupKey, options) {
   `;
 }
 
-function renderPalette() {
-  return TEMPLATE_COLORS.map((color, index) => `
-    <label class="color-chip">
-      <input type="radio" name="backgroundColor" value="${color.value}" ${index === 0 ? 'checked' : ''} />
-      <span class="color-chip__swatch" style="--swatch:${color.value}"></span>
-      <span class="color-chip__label">${color.label}</span>
-    </label>
-  `).join('');
-}
-
 function renderTemplatePicker(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
   return `
     <div class="template-carousel">
       <button class="template-carousel__nav" type="button" data-template-carousel-nav="prev" aria-label="Previous template">&larr;</button>
       <div class="template-carousel__viewport" data-template-carousel>
-        <div class="template-option-track">
+        <div class="template-thumb-track">
           ${COMPOSE_TEMPLATES.map((template) => `
-            <label class="template-option">
+            <label class="template-thumb ${selectedTemplateId === template.id ? 'is-active' : ''}">
               <input type="radio" name="templateId" value="${template.id}" ${selectedTemplateId === template.id ? 'checked' : ''} />
-              <span class="template-option__preview template-option__preview--${template.id}" aria-hidden="true"></span>
-              <span class="template-option__body">
-                <strong class="template-option__title">${template.label}</strong>
-                <span class="template-option__copy">${template.description}</span>
-              </span>
+              <span class="template-thumb__preview template-option__preview template-option__preview--${template.id}" aria-hidden="true"></span>
             </label>
           `).join('')}
         </div>
       </div>
       <button class="template-carousel__nav" type="button" data-template-carousel-nav="next" aria-label="Next template">&rarr;</button>
+    </div>
+  `;
+}
+
+function renderColorPicker(selectedBackground) {
+  return `
+    <div class="template-carousel template-carousel--color">
+      <button class="template-carousel__nav" type="button" data-color-carousel-nav="prev" aria-label="Previous color">&larr;</button>
+      <div class="template-carousel__viewport" data-color-carousel>
+        <div class="color-chip-track">
+          ${TEMPLATE_COLORS.map((color) => `
+            <label class="color-chip ${selectedBackground === color.value ? 'is-active' : ''}">
+              <input type="radio" name="backgroundColor" value="${color.value}" ${selectedBackground === color.value ? 'checked' : ''} />
+              <span class="color-chip__swatch" style="--swatch:${color.value}"></span>
+              <span class="color-chip__label">${color.label}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      <button class="template-carousel__nav" type="button" data-color-carousel-nav="next" aria-label="Next color">&rarr;</button>
     </div>
   `;
 }
@@ -75,13 +82,72 @@ function renderUploadSlot({ id, slotClass }) {
   `;
 }
 
+function renderPage8Controls(customLayout = {}) {
+  const densityMode = customLayout.densityMode || PAGE8_DEFAULT_OPTIONS.densityMode;
+  const recoveryMode = customLayout.recoveryMode || PAGE8_DEFAULT_OPTIONS.recoveryMode;
+
+  return `
+    <section class="compose-group compose-group--custom" data-custom-template-controls hidden>
+      <div class="compose-group__head">
+        <h3>Custom Layout</h3>
+      </div>
+      <div class="custom-layout-options">
+        <fieldset class="custom-layout-fieldset">
+          <legend>Text Flow</legend>
+          <label class="tag-check">
+            <input type="radio" name="customDensityMode" value="fill" ${densityMode === 'fill' ? 'checked' : ''} />
+            <span>画面全部を埋めたい</span>
+          </label>
+          <label class="tag-check">
+            <input type="radio" name="customDensityMode" value="whitespace" ${densityMode === 'whitespace' ? 'checked' : ''} />
+            <span>余白を使いたい</span>
+          </label>
+        </fieldset>
+        <fieldset class="custom-layout-fieldset">
+          <legend>Text Recovery</legend>
+          <label class="tag-check">
+            <input type="radio" name="customRecoveryMode" value="restore" ${recoveryMode === 'restore' ? 'checked' : ''} />
+            <span>画像を戻したら文字も戻す</span>
+          </label>
+          <label class="tag-check">
+            <input type="radio" name="customRecoveryMode" value="keep" ${recoveryMode === 'keep' ? 'checked' : ''} />
+            <span>その状態を維持する</span>
+          </label>
+        </fieldset>
+        <p class="custom-layout-hint">Page 8 では画像ボックスをページ内で動かすと、文字が被らない位置へ自動で移動し、必要なら文字サイズも小さくなります。</p>
+      </div>
+    </section>
+  `;
+}
+
 export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
+  const options = typeof selectedTemplateId === 'object'
+    ? selectedTemplateId
+    : { selectedTemplateId };
+  const draft = options.draft || {};
+  const values = {
+    headline: draft.headline || 'A quiet date story',
+    subhead: draft.subhead || 'A small title line drifting across the page',
+    intro: draft.intro || 'short intro\nshort intro\nshort intro',
+    body: draft.body || 'Write a soft paragraph here.\nAdd the memory you want to keep.',
+    date: draft.date || '2026.04.14',
+    editor: draft.editor || '編集者：haru',
+  };
+  const selectedId = options.selectedTemplateId || draft.templateId || DEFAULT_COMPOSE_TEMPLATE;
+  const selectedBackground = draft.backgroundColor || '#f8f4ee';
+  const customLayout = draft.customLayout || PAGE8_DEFAULT_OPTIONS;
+  const selectedFixedTags = Array.isArray(draft.fixedTags) ? draft.fixedTags : [];
+  const freeTagsValue = Array.isArray(draft.freeTags) ? draft.freeTags.join(', ') : (draft.freeTags || '');
+  const submitLabel = options.isEditing ? 'Update Post' : 'Post This Layout';
+  const headerMini = options.isEditing ? 'post editor' : 'template editor';
+  const headerTitle = options.isEditing ? 'Edit Post' : 'Compose';
+
   return `
     <section class="page page--compose">
       <header class="page-header page-header--compose">
         <div>
-          <p class="page-header__mini">template editor</p>
-          <h2 class="page-header__title">Compose</h2>
+          <p class="page-header__mini">${headerMini}</p>
+          <h2 class="page-header__title">${headerTitle}</h2>
         </div>
         <button class="button button--ghost compose-preview-toggle" type="button" data-toggle-compose-preview aria-pressed="false">
           preview
@@ -90,7 +156,7 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
 
       <form class="compose-form" id="composeForm">
         <section class="compose-preview">
-          <div class="compose-sheet" id="composeSheet" data-template="${selectedTemplateId}" style="--sheet-bg:#f8f4ee;">
+          <div class="compose-sheet" id="composeSheet" data-template="${selectedId}" style="--sheet-bg:${selectedBackground};">
             <div class="compose-sheet__frame">
               <div class="compose-sheet__outline" aria-hidden="true"></div>
               <div class="compose-sheet__footer-bar" aria-hidden="true"></div>
@@ -102,7 +168,7 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
                 data-single-line="true"
                 contenteditable="true"
                 spellcheck="false"
-              >A quiet date story</div>
+              >${values.headline}</div>
               <div
                 class="compose-sheet__subhead compose-editable"
                 data-editable="subhead"
@@ -111,7 +177,7 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
                 data-single-line="true"
                 contenteditable="true"
                 spellcheck="false"
-              >A small title line drifting across the page</div>
+              >${values.subhead}</div>
               <div
                 class="compose-sheet__notes compose-editable"
                 data-editable="intro"
@@ -119,9 +185,7 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
                 data-max-chars="72"
                 contenteditable="true"
                 spellcheck="false"
-              >short intro
-short intro
-short intro</div>
+              >${values.intro}</div>
               ${renderUploadSlot({
                 id: 'imageInputSecondary',
                 slotClass: 'compose-slot--secondary',
@@ -141,8 +205,7 @@ short intro</div>
                 data-max-chars="120"
                 contenteditable="true"
                 spellcheck="false"
-              >Write a soft paragraph here.
-Add the memory you want to keep.</div>
+              >${values.body}</div>
               <div
                 class="compose-sheet__date compose-editable"
                 data-editable="date"
@@ -151,7 +214,7 @@ Add the memory you want to keep.</div>
                 data-single-line="true"
                 contenteditable="true"
                 spellcheck="false"
-              >2026.04.14</div>
+              >${values.date}</div>
               <div
                 class="compose-sheet__editor compose-editable"
                 data-editable="editor"
@@ -160,7 +223,7 @@ Add the memory you want to keep.</div>
                 data-single-line="true"
                 contenteditable="true"
                 spellcheck="false"
-              >編集者：haru</div>
+              >${values.editor}</div>
             </div>
           </div>
         </section>
@@ -169,36 +232,36 @@ Add the memory you want to keep.</div>
           <div class="compose-group__head">
             <h3>Template</h3>
           </div>
-          ${renderTemplatePicker(selectedTemplateId)}
+          ${renderTemplatePicker(selectedId)}
         </section>
 
         <section class="compose-group">
           <div class="compose-group__head">
             <h3>Background</h3>
           </div>
-          <div class="color-chip-grid">
-            ${renderPalette()}
-          </div>
+          ${renderColorPicker(selectedBackground)}
         </section>
+
+        ${renderPage8Controls(customLayout)}
 
         <section class="compose-disclosure">
           <button class="compose-disclosure__button" type="button" data-toggle-compose-tags aria-expanded="false">
             タグ
           </button>
           <div class="compose-disclosure__panel" data-compose-tags hidden>
-            ${Object.entries(TAG_GROUPS).map(([groupKey, options]) => renderGroup(groupKey, options)).join('')}
+            ${Object.entries(TAG_GROUPS).map(([groupKey, options]) => renderGroup(groupKey, options, selectedFixedTags)).join('')}
             <section class="compose-group compose-group--tags">
               <div class="compose-group__head">
                 <h3>Free Tags</h3>
               </div>
               <label class="field">
-                <input class="field__input" type="text" name="freeTags" placeholder="cafe, spring, film" />
+                <input class="field__input" type="text" name="freeTags" placeholder="cafe, spring, film" value="${freeTagsValue}" />
               </label>
             </section>
           </div>
         </section>
 
-        <button class="button button--primary button--full" type="submit">Post This Layout</button>
+        <button class="button button--primary button--full" type="submit">${submitLabel}</button>
       </form>
     </section>
   `;

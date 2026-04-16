@@ -20,7 +20,7 @@ export function renderPostDetail(post, options = {}) {
     `;
   }
 
-  const { canDelete = false } = options;
+  const { canDelete = false, canEdit = false } = options;
   const tags = [...(post.fixedTags || []), ...(post.freeTags || [])];
 
   return `
@@ -69,10 +69,19 @@ export function renderPostDetail(post, options = {}) {
               <span>${post.saves}</span>
             </button>
           </div>
-          ${canDelete ? `
-            <button class="button button--ghost post-detail-card__delete" type="button" data-delete-post="${post.id}" aria-label="Delete post">
-              ${getIcon('trash')}
-            </button>
+          ${(canEdit || canDelete) ? `
+            <div class="post-detail-card__owner-actions">
+              ${canEdit ? `
+                <button class="button button--ghost post-detail-card__edit" type="button" data-edit-post="${post.id}" aria-label="Edit post">
+                  ${getIcon('edit')}
+                </button>
+              ` : ''}
+              ${canDelete ? `
+                <button class="button button--ghost post-detail-card__delete" type="button" data-delete-post="${post.id}" aria-label="Delete post">
+                  ${getIcon('trash')}
+                </button>
+              ` : ''}
+            </div>
           ` : ''}
         </div>
       </article>

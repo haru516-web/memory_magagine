@@ -33,7 +33,7 @@ export const page5Template = {
       y: frame.y + (frame.height * 0.74),
       width: frame.width * 0.25,
       height: frame.height * 0.16,
-      radius: 18,
+      radius: 0,
     };
 
     if (files.primary.file) {

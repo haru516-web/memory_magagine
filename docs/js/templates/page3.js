@@ -33,7 +33,7 @@ export const page3Template = {
       y: frame.y + (frame.height * 0.72),
       width: frame.width * 0.14,
       height: frame.height * 0.15,
-      radius: 28,
+      radius: 0,
     };
 
     if (files.primary.file) {

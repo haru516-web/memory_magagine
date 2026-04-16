@@ -25,7 +25,7 @@ export const page1Template = {
       y: frame.y + frame.height * 0.125,
       width: frame.width * 0.36,
       height: frame.width * 0.36,
-      radius: 30,
+      radius: 0,
     };
 
     const primarySlot = {
@@ -33,7 +33,7 @@ export const page1Template = {
       y: frame.y + frame.height * 0.48,
       width: frame.width * 0.45,
       height: frame.height * 0.39,
-      radius: 30,
+      radius: 0,
     };
 
     if (files.secondary.file) {

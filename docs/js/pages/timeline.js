@@ -1,5 +1,4 @@
 import { renderPostCard } from '../components/postCard.js';
-import { renderTopTabs } from '../components/topTabs.js';
 import { sortRecommended } from '../utils/filter.js';
 
 function getTimelinePosts(state, activeTab) {
@@ -18,8 +17,6 @@ export function renderTimeline(state, uiState) {
         <p class="page-header__mini">memories timeline</p>
         <h2 class="page-header__title">Timeline</h2>
       </header>
-
-      ${renderTopTabs(uiState.timelineTab)}
 
       <div class="feed-grid feed-grid--single">
         ${posts.length ? posts.map((post) => renderPostCard(post, { mode: 'minimal' })).join('') : `
