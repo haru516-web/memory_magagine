@@ -22,12 +22,15 @@
   height: clamp(112px, 24vw, 156px);
   justify-self: center;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(248, 223, 225, 0.92));
-  border: 1px solid rgba(221, 192, 194, 0.9);
+  background:
+    var(--panel-bg) padding-box,
+    linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) padding-box,
+    var(--panel-border) border-box;
+  border: 1px solid transparent;
   display: grid;
   place-items: center;
   gap: 6px;
-  box-shadow: 0 18px 36px rgba(142, 100, 103, 0.14);
+  box-shadow: var(--shadow);
   overflow: hidden;
   z-index: 1;
 }
@@ -50,7 +53,7 @@
 }
 
 .profile-orbit__display.is-identity .profile-orbit__display-value {
-  background: linear-gradient(180deg, #f3d6d9, #efc3cb);
+  background: linear-gradient(180deg, rgba(81, 198, 255, 0.22), rgba(120, 101, 255, 0.26));
 }
 
 .profile-orbit__display .profile-node__avatar,
@@ -101,8 +104,12 @@
   gap: 6px;
   padding: 16px;
   border-radius: 20px;
-  background: rgba(255, 248, 242, 0.9);
-  border: 1px solid rgba(233, 217, 207, 0.92);
+  background:
+    var(--panel-bg) padding-box,
+    linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) padding-box,
+    var(--panel-border) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--shadow);
 }
 
 .profile-info-card--wide {
@@ -147,8 +154,8 @@
   min-width: 84px;
   padding: 9px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(222, 201, 191, 0.9);
-  background: rgba(255, 248, 242, 0.72);
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
   color: var(--muted);
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -161,9 +168,9 @@
 }
 
 .profile-library-tab.is-active {
-  background: rgba(244, 218, 220, 0.92);
-  border-color: rgba(208, 170, 174, 0.96);
-  color: var(--text);
+  background: var(--control-accent-bg);
+  border-color: var(--control-accent-border);
+  color: var(--control-accent-text);
 }
 
 .profile-library-panel {
@@ -247,12 +254,12 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(180deg, #f5d8db, #efc0c8);
-  color: #7d5659;
+  background: linear-gradient(135deg, rgba(109, 208, 255, 0.94), rgba(120, 101, 255, 0.9));
+  color: #020305;
   font-size: 22px;
   line-height: 1;
-  border: 1px solid rgba(201, 155, 160, 0.92);
-  box-shadow: 0 10px 22px rgba(137, 95, 98, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
   transform: translate(-18%, -18%);
   z-index: 2;
 }
@@ -329,7 +336,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px dashed rgba(229, 206, 195, 0.8);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
 }
 
 .follow-item:last-child {
@@ -354,8 +361,8 @@
   gap: 6px;
   padding: 14px;
   border-radius: 18px;
-  background: rgba(255, 250, 246, 0.95);
-  border: 1px solid rgba(233, 217, 207, 0.9);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .stat-card span {

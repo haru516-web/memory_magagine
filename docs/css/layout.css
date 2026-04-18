@@ -1,22 +1,50 @@
 #app {
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: clip;
 }
 
 .app-shell {
-  width: min(100%, var(--page-width));
+  width: 100%;
   min-height: 100vh;
-  margin: 0 auto;
-  background: linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,252,249,0.9));
+  min-height: 100dvh;
+  background: var(--shell-bg);
+  color: var(--text);
   position: relative;
-  box-shadow: 0 0 0 1px rgba(233, 217, 207, 0.7);
+  box-shadow: none;
   overflow-x: clip;
+  overflow-y: hidden;
+}
+
+.app-shell--timeline {
+  box-shadow: none;
+}
+
+.app-shell--home {
+  background: var(--shell-bg);
 }
 
 .screen-area {
   min-height: 100vh;
-  padding: 18px clamp(56px, 14vw, 76px) 24px;
+  min-height: 100dvh;
+  padding: 18px clamp(14px, 3vw, 28px) 24px;
   scroll-padding-bottom: 20px;
+  overflow: hidden;
+}
+
+.screen-area--home {
+  padding: 0;
+  background: transparent;
+}
+
+.screen-area--timeline {
+  padding: clamp(18px, 2.8vw, 32px);
+}
+
+.screen-area--search {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .page {
@@ -53,10 +81,14 @@
 .issue-form,
 .empty-panel,
 .search-box {
-  background: rgba(255, 253, 251, 0.88);
-  border: 1px solid rgba(234, 216, 207, 0.92);
+  background:
+    var(--panel-bg) padding-box,
+    linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) padding-box,
+    var(--panel-border) border-box;
+  border: 1px solid transparent;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
+  color: var(--text);
 }
 
 .section-block,

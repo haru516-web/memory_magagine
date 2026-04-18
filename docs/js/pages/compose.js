@@ -1,7 +1,6 @@
 import { TAG_GROUPS, TAG_GROUP_LABELS } from '../data/tags.js';
 import { COMPOSE_TEMPLATES, DEFAULT_COMPOSE_TEMPLATE } from '../templates/index.js';
 import { getIcon } from '../components/icons.js';
-import { PAGE8_DEFAULT_OPTIONS } from '../templates/page8Layout.js';
 
 const TEMPLATE_COLORS = [
   { value: '#f8f4ee', label: 'Ivory' },
@@ -49,20 +48,16 @@ function renderTemplatePicker(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
 
 function renderColorPicker(selectedBackground) {
   return `
-    <div class="template-carousel template-carousel--color">
-      <button class="template-carousel__nav" type="button" data-color-carousel-nav="prev" aria-label="Previous color">&larr;</button>
-      <div class="template-carousel__viewport" data-color-carousel>
-        <div class="color-chip-track">
-          ${TEMPLATE_COLORS.map((color) => `
-            <label class="color-chip ${selectedBackground === color.value ? 'is-active' : ''}">
-              <input type="radio" name="backgroundColor" value="${color.value}" ${selectedBackground === color.value ? 'checked' : ''} />
-              <span class="color-chip__swatch" style="--swatch:${color.value}"></span>
-              <span class="color-chip__label">${color.label}</span>
-            </label>
-          `).join('')}
-        </div>
+    <div class="color-picker-inline">
+      <div class="color-chip-track color-chip-track--inline" data-color-carousel>
+        ${TEMPLATE_COLORS.map((color) => `
+          <label class="color-chip color-chip--inline ${selectedBackground === color.value ? 'is-active' : ''}" title="${color.label}">
+            <input type="radio" name="backgroundColor" value="${color.value}" ${selectedBackground === color.value ? 'checked' : ''} />
+            <span class="color-chip__swatch" style="--swatch:${color.value}"></span>
+            <span class="color-chip__label">${color.label}</span>
+          </label>
+        `).join('')}
       </div>
-      <button class="template-carousel__nav" type="button" data-color-carousel-nav="next" aria-label="Next color">&rarr;</button>
     </div>
   `;
 }
@@ -82,40 +77,193 @@ function renderUploadSlot({ id, slotClass }) {
   `;
 }
 
-function renderPage8Controls(customLayout = {}) {
-  const densityMode = customLayout.densityMode || PAGE8_DEFAULT_OPTIONS.densityMode;
-  const recoveryMode = customLayout.recoveryMode || PAGE8_DEFAULT_OPTIONS.recoveryMode;
+function renderStaticSlot(slotClass) {
+  return `
+    <div class="compose-slot ${slotClass}">
+      <div class="compose-slot__surface">
+        <div class="compose-slot__placeholder">
+          <span class="compose-slot__plus">${getIcon('compose')}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderComposeSheet(values, selectedId, selectedBackground, options = {}) {
+  const { editable = false, interactiveSlots = false } = options;
+  const isCustomTemplate = selectedId === 'page8';
+  const baseClass = editable ? 'compose-sheet' : 'compose-sheet compose-sheet--locked';
+  const sheetClass = isCustomTemplate ? `${baseClass} compose-sheet--custom` : baseClass;
+  const editableAttr = editable ? 'true' : 'false';
+
+  if (isCustomTemplate) {
+    return `
+      <div class="${sheetClass}" id="composeSheet" data-template="${selectedId}" style="--sheet-bg:${selectedBackground};">
+        <div class="compose-sheet__frame">
+          <div class="compose-custom-canvas" data-custom-canvas hidden></div>
+        </div>
+      </div>
+    `;
+  }
 
   return `
-    <section class="compose-group compose-group--custom" data-custom-template-controls hidden>
-      <div class="compose-group__head">
-        <h3>Custom Layout</h3>
+    <div class="${sheetClass}" id="composeSheet" data-template="${selectedId}" style="--sheet-bg:${selectedBackground};">
+      <div class="compose-sheet__frame">
+        <div class="compose-sheet__outline" aria-hidden="true"></div>
+        <div class="compose-sheet__footer-bar" aria-hidden="true"></div>
+        <div class="compose-custom-canvas" data-custom-canvas hidden></div>
+        <div
+          class="compose-sheet__headline compose-editable"
+          data-editable="headline"
+          data-placeholder="headline"
+          data-max-chars="42"
+          data-single-line="true"
+          contenteditable="${editableAttr}"
+          spellcheck="false"
+        >${values.headline}</div>
+        <div
+          class="compose-sheet__subhead compose-editable"
+          data-editable="subhead"
+          data-placeholder="subhead"
+          data-max-chars="56"
+          data-single-line="true"
+          contenteditable="${editableAttr}"
+          spellcheck="false"
+        >${values.subhead}</div>
+        <div
+          class="compose-sheet__notes compose-editable"
+          data-editable="intro"
+          data-placeholder="notes"
+          data-max-chars="72"
+          contenteditable="${editableAttr}"
+          spellcheck="false"
+        >${values.intro}</div>
+        ${interactiveSlots
+          ? renderUploadSlot({ id: 'imageInputSecondary', slotClass: 'compose-slot--secondary' })
+          : renderStaticSlot('compose-slot--secondary')}
+        ${interactiveSlots
+          ? renderUploadSlot({ id: 'imageInputAccent', slotClass: 'compose-slot--accent' })
+          : renderStaticSlot('compose-slot--accent')}
+        ${interactiveSlots
+          ? renderUploadSlot({ id: 'imageInputPrimary', slotClass: 'compose-slot--primary' })
+          : renderStaticSlot('compose-slot--primary')}
+        <div
+          class="compose-sheet__body compose-editable"
+          data-editable="body"
+          data-placeholder="body"
+          data-max-chars="120"
+          contenteditable="${editableAttr}"
+          spellcheck="false"
+        >${values.body}</div>
+        <div
+          class="compose-sheet__date compose-editable"
+          data-editable="date"
+          data-placeholder="date"
+          data-max-chars="18"
+          data-single-line="true"
+          contenteditable="${editableAttr}"
+          spellcheck="false"
+        >${values.date}</div>
+        <div
+          class="compose-sheet__editor compose-editable"
+          data-editable="editor"
+          data-placeholder="editor"
+          data-max-chars="24"
+          data-single-line="true"
+          contenteditable="${editableAttr}"
+          spellcheck="false"
+        >${values.editor}</div>
       </div>
-      <div class="custom-layout-options">
-        <fieldset class="custom-layout-fieldset">
-          <legend>Text Flow</legend>
-          <label class="tag-check">
-            <input type="radio" name="customDensityMode" value="fill" ${densityMode === 'fill' ? 'checked' : ''} />
-            <span>画面全部を埋めたい</span>
+    </div>
+  `;
+}
+
+function renderTagPanel(selectedFixedTags, freeTagsValue) {
+  return `
+    <section class="compose-disclosure compose-disclosure--inline">
+      <button class="compose-disclosure__button" type="button" data-toggle-compose-tags aria-expanded="false">
+        タグ
+      </button>
+      <div class="compose-disclosure__panel" data-compose-tags hidden>
+        ${Object.entries(TAG_GROUPS).map(([groupKey, options]) => renderGroup(groupKey, options, selectedFixedTags)).join('')}
+        <section class="compose-group compose-group--tags">
+          <div class="compose-group__head">
+            <h3>Free Tags</h3>
+          </div>
+          <label class="field">
+            <input class="field__input" type="text" name="freeTags" placeholder="cafe, spring, film" value="${freeTagsValue}" />
           </label>
-          <label class="tag-check">
-            <input type="radio" name="customDensityMode" value="whitespace" ${densityMode === 'whitespace' ? 'checked' : ''} />
-            <span>余白を使いたい</span>
-          </label>
-        </fieldset>
-        <fieldset class="custom-layout-fieldset">
-          <legend>Text Recovery</legend>
-          <label class="tag-check">
-            <input type="radio" name="customRecoveryMode" value="restore" ${recoveryMode === 'restore' ? 'checked' : ''} />
-            <span>画像を戻したら文字も戻す</span>
-          </label>
-          <label class="tag-check">
-            <input type="radio" name="customRecoveryMode" value="keep" ${recoveryMode === 'keep' ? 'checked' : ''} />
-            <span>その状態を維持する</span>
-          </label>
-        </fieldset>
-        <p class="custom-layout-hint">Page 8 では画像ボックスをページ内で動かすと、文字が被らない位置へ自動で移動し、必要なら文字サイズも小さくなります。</p>
+        </section>
       </div>
+    </section>
+  `;
+}
+
+function renderSelectionScreen({ values, selectedId, selectedBackground, headerMini, headerTitle }) {
+  return `
+    <section class="page page--compose page--compose--select" data-compose-stage="select">
+      <header class="page-header page-header--compose">
+        <div>
+          <p class="page-header__mini">${headerMini}</p>
+          <h2 class="page-header__title">${headerTitle}</h2>
+        </div>
+      </header>
+
+      <section class="compose-select-shell">
+        <section class="compose-preview compose-preview--select">
+          ${renderComposeSheet(values, selectedId, selectedBackground, { editable: false, interactiveSlots: false })}
+        </section>
+
+        <section class="compose-group compose-group--template compose-group--template-select">
+          <div class="compose-group__head compose-group__head--template compose-group__head--template-select">
+            <h3>Template</h3>
+            ${renderColorPicker(selectedBackground)}
+            <button class="button button--primary compose-confirm-button" type="button" data-compose-stage-nav="edit">決定</button>
+          </div>
+          ${renderTemplatePicker(selectedId)}
+        </section>
+      </section>
+    </section>
+  `;
+}
+
+function renderEditorScreen({ values, selectedId, selectedBackground, selectedFixedTags, freeTagsValue, submitLabel, headerMini, headerTitle }) {
+  return `
+    <section class="page page--compose page--compose--edit" data-compose-stage="edit">
+      <header class="page-header page-header--with-back page-header--compose">
+        <button class="button button--ghost page-back" type="button" data-close-compose>Back</button>
+        <div>
+          <p class="page-header__mini">${headerMini}</p>
+          <h2 class="page-header__title">${headerTitle}</h2>
+        </div>
+      </header>
+
+      <form class="compose-form compose-form--edit" id="composeForm">
+        <section class="compose-editor">
+          <section class="compose-preview compose-preview--editor">
+            ${renderComposeSheet(values, selectedId, selectedBackground, { editable: true, interactiveSlots: true })}
+          </section>
+
+          <aside class="compose-editor-actions">
+            <section class="compose-group compose-group--template">
+              <div class="compose-group__head compose-group__head--template">
+                <h3>Template</h3>
+                ${renderColorPicker(selectedBackground)}
+              </div>
+              ${renderTemplatePicker(selectedId)}
+            </section>
+            <section class="compose-custom-tools" data-custom-template-controls hidden>
+              <div class="compose-custom-tools__buttons">
+                <button class="button button--ghost" type="button" data-custom-add="image">画像追加</button>
+                <button class="button button--ghost" type="button" data-custom-add="text">文字追加</button>
+              </div>
+              <section class="compose-custom-inspector" data-custom-inspector></section>
+            </section>
+            ${renderTagPanel(selectedFixedTags, freeTagsValue)}
+            <button class="button button--primary compose-submit-button" type="submit">${submitLabel}</button>
+          </aside>
+        </section>
+      </form>
     </section>
   `;
 }
@@ -126,143 +274,28 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
     : { selectedTemplateId };
   const draft = options.draft || {};
   const values = {
-    headline: draft.headline || 'A quiet date story',
-    subhead: draft.subhead || 'A small title line drifting across the page',
-    intro: draft.intro || 'short intro\nshort intro\nshort intro',
-    body: draft.body || 'Write a soft paragraph here.\nAdd the memory you want to keep.',
-    date: draft.date || '2026.04.14',
+    headline: draft.headline || 'text',
+    subhead: draft.subhead || 'text',
+    intro: draft.intro || 'text',
+    body: draft.body || 'text',
+    date: draft.date || 'text',
     editor: draft.editor || '編集者：haru',
   };
   const selectedId = options.selectedTemplateId || draft.templateId || DEFAULT_COMPOSE_TEMPLATE;
-  const selectedBackground = draft.backgroundColor || '#f8f4ee';
-  const customLayout = draft.customLayout || PAGE8_DEFAULT_OPTIONS;
+  const selectedBackground = options.selectedBackground || draft.backgroundColor || '#f8f4ee';
   const selectedFixedTags = Array.isArray(draft.fixedTags) ? draft.fixedTags : [];
   const freeTagsValue = Array.isArray(draft.freeTags) ? draft.freeTags.join(', ') : (draft.freeTags || '');
   const submitLabel = options.isEditing ? 'Update Post' : 'Post This Layout';
   const headerMini = options.isEditing ? 'post editor' : 'template editor';
   const headerTitle = options.isEditing ? 'Edit Post' : 'Compose';
-
-  return `
-    <section class="page page--compose">
-      <header class="page-header page-header--compose">
-        <div>
-          <p class="page-header__mini">${headerMini}</p>
-          <h2 class="page-header__title">${headerTitle}</h2>
-        </div>
-        <button class="button button--ghost compose-preview-toggle" type="button" data-toggle-compose-preview aria-pressed="false">
-          preview
-        </button>
-      </header>
-
-      <form class="compose-form" id="composeForm">
-        <section class="compose-preview">
-          <div class="compose-sheet" id="composeSheet" data-template="${selectedId}" style="--sheet-bg:${selectedBackground};">
-            <div class="compose-sheet__frame">
-              <div class="compose-sheet__outline" aria-hidden="true"></div>
-              <div class="compose-sheet__footer-bar" aria-hidden="true"></div>
-              <div
-                class="compose-sheet__headline compose-editable"
-                data-editable="headline"
-                data-placeholder="headline"
-                data-max-chars="42"
-                data-single-line="true"
-                contenteditable="true"
-                spellcheck="false"
-              >${values.headline}</div>
-              <div
-                class="compose-sheet__subhead compose-editable"
-                data-editable="subhead"
-                data-placeholder="subhead"
-                data-max-chars="56"
-                data-single-line="true"
-                contenteditable="true"
-                spellcheck="false"
-              >${values.subhead}</div>
-              <div
-                class="compose-sheet__notes compose-editable"
-                data-editable="intro"
-                data-placeholder="notes"
-                data-max-chars="72"
-                contenteditable="true"
-                spellcheck="false"
-              >${values.intro}</div>
-              ${renderUploadSlot({
-                id: 'imageInputSecondary',
-                slotClass: 'compose-slot--secondary',
-              })}
-              ${renderUploadSlot({
-                id: 'imageInputAccent',
-                slotClass: 'compose-slot--accent',
-              })}
-              ${renderUploadSlot({
-                id: 'imageInputPrimary',
-                slotClass: 'compose-slot--primary',
-              })}
-              <div
-                class="compose-sheet__body compose-editable"
-                data-editable="body"
-                data-placeholder="body"
-                data-max-chars="120"
-                contenteditable="true"
-                spellcheck="false"
-              >${values.body}</div>
-              <div
-                class="compose-sheet__date compose-editable"
-                data-editable="date"
-                data-placeholder="date"
-                data-max-chars="18"
-                data-single-line="true"
-                contenteditable="true"
-                spellcheck="false"
-              >${values.date}</div>
-              <div
-                class="compose-sheet__editor compose-editable"
-                data-editable="editor"
-                data-placeholder="editor"
-                data-max-chars="24"
-                data-single-line="true"
-                contenteditable="true"
-                spellcheck="false"
-              >${values.editor}</div>
-            </div>
-          </div>
-        </section>
-
-        <section class="compose-group">
-          <div class="compose-group__head">
-            <h3>Template</h3>
-          </div>
-          ${renderTemplatePicker(selectedId)}
-        </section>
-
-        <section class="compose-group">
-          <div class="compose-group__head">
-            <h3>Background</h3>
-          </div>
-          ${renderColorPicker(selectedBackground)}
-        </section>
-
-        ${renderPage8Controls(customLayout)}
-
-        <section class="compose-disclosure">
-          <button class="compose-disclosure__button" type="button" data-toggle-compose-tags aria-expanded="false">
-            タグ
-          </button>
-          <div class="compose-disclosure__panel" data-compose-tags hidden>
-            ${Object.entries(TAG_GROUPS).map(([groupKey, options]) => renderGroup(groupKey, options, selectedFixedTags)).join('')}
-            <section class="compose-group compose-group--tags">
-              <div class="compose-group__head">
-                <h3>Free Tags</h3>
-              </div>
-              <label class="field">
-                <input class="field__input" type="text" name="freeTags" placeholder="cafe, spring, film" value="${freeTagsValue}" />
-              </label>
-            </section>
-          </div>
-        </section>
-
-        <button class="button button--primary button--full" type="submit">${submitLabel}</button>
-      </form>
-    </section>
-  `;
+  return renderEditorScreen({
+    values,
+    selectedId,
+    selectedBackground,
+    selectedFixedTags,
+    freeTagsValue,
+    submitLabel,
+    headerMini,
+    headerTitle,
+  });
 }

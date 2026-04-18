@@ -226,9 +226,12 @@ function renderOwnProfile(state, uiState, authors) {
 
   return `
     <section class="page page--profile">
-      <header class="page-header">
-        <p class="page-header__mini">your room</p>
-        <h2 class="page-header__title">Profile</h2>
+      <header class="page-header page-header--with-back">
+        <button class="button button--ghost page-back" type="button" data-close-profile>Back</button>
+        <div>
+          <p class="page-header__mini">your room</p>
+          <h2 class="page-header__title">Profile</h2>
+        </div>
       </header>
 
       <section
@@ -254,9 +257,12 @@ function renderOtherProfile(state, viewedAuthor) {
 
   return `
     <section class="page page--profile">
-      <header class="page-header">
-        <p class="page-header__mini">author profile</p>
-        <h2 class="page-header__title">${viewedAuthor}</h2>
+      <header class="page-header page-header--with-back">
+        <button class="button button--ghost page-back" type="button" data-close-profile>Back</button>
+        <div>
+          <p class="page-header__mini">author profile</p>
+          <h2 class="page-header__title">${viewedAuthor}</h2>
+        </div>
       </header>
 
       <section class="profile-card">

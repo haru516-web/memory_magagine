@@ -46,9 +46,12 @@ function renderIssues(issues, posts) {
 export function renderMagazine(state) {
   return `
     <section class="page page--magazine">
-      <header class="page-header">
-        <p class="page-header__mini">issue builder</p>
-        <h2 class="page-header__title">Magazine</h2>
+      <header class="page-header page-header--with-back">
+        <button class="button button--ghost page-back" type="button" data-home-nav="home">Back</button>
+        <div>
+          <p class="page-header__mini">issue builder</p>
+          <h2 class="page-header__title">Magazine</h2>
+        </div>
       </header>
 
       <form class="issue-form" id="issueForm">

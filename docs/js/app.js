@@ -1,22 +1,39 @@
 import { renderBottomNav } from './components/bottomNav.js';
 import { renderCommentsModal } from './components/modals.js';
+import { getIcon } from './components/icons.js';
 import { getState, addPost, updatePost, deletePost, toggleLike, toggleSave, addComment, addImpression, updateProfile, toggleFollow, saveIssue } from './core/store.js';
 import { renderOpening } from './pages/opening.js';
-import { renderTimeline } from './pages/timeline.js';
+import { renderHome, renderTimeline } from './pages/timeline.js';
 import { renderSearch } from './pages/search.js';
 import { renderCompose } from './pages/compose.js';
 import { renderMagazine } from './pages/magazine.js';
 import { renderProfile } from './pages/profile.js';
 import { renderPostDetail } from './pages/postDetail.js';
 import { DEFAULT_COMPOSE_TEMPLATE, getComposeTemplateById } from './templates/index.js';
-import { computePage8ResolvedLayout, normalizePage8ImageBoxes, normalizePage8Options, page8RectToPercent, PAGE8_BOUNDS } from './templates/page8Layout.js';
+import {
+  computePage8ResolvedLayout,
+  normalizePage8ImageBoxes,
+  normalizePage8Options,
+  normalizePage8TextBoxes,
+  page8RectToPercent,
+  PAGE8_BOUNDS,
+  PAGE8_GRID,
+  PAGE8_MIN_IMAGE_SIZE,
+  PAGE8_MIN_TEXT_SIZE,
+  snapPage8Value,
+} from './templates/page8Layout.js';
 import { cropFileToCirclePngDataUrl, fileToPreviewUrl } from './utils/image.js';
 
 const uiState = {
   screen: 'opening',
+  timelineOverlay: null,
   timelineTab: 'recommended',
+  timelinePan: { x: -360, y: -220 },
   searchQuery: '',
   searchTags: [],
+  homeTheme: 'light',
+  homeCoreState: 'default',
+  homeCoreTapTimestamps: [],
   previewPostId: null,
   commentPostId: null,
   profileEditOpen: false,
@@ -27,30 +44,48 @@ const uiState = {
   profileOrbitRotation: 0,
   profileOrbitDragSuppressUntil: 0,
   profileAvatarCropOpen: false,
+  composeStage: 'select',
   composeTemplateId: DEFAULT_COMPOSE_TEMPLATE,
+  composeBackgroundColor: '#f8f4ee',
   composeEditingPostId: null,
   openingTapGuardUntil: 0,
   postReturnScreen: 'timeline',
   postReturnProfileAuthor: null,
+  profileReturnState: null,
+  composeReturnState: null,
 };
 
 const composePreviewDefaults = {
-  headline: 'A quiet date story',
-  subhead: 'A small title line drifting across the page',
-  intro: 'short intro\nshort intro\nshort intro',
-  body: 'Write a soft paragraph here.\nAdd the memory you want to keep.',
-  date: '2026.04.14',
+  headline: 'text',
+  subhead: 'text',
+  intro: 'text',
+  body: 'text',
+  date: 'text',
   editor: '編集者：haru',
 };
 
 const app = document.getElementById('app');
 let openingSequenceId = 0;
+let homeCoreTransitionTimer = null;
 const profileAvatarDraft = {
   file: null,
   previewUrl: '',
   imageSize: null,
   crop: { x: 0.5, y: 0.5, zoom: 1 },
 };
+
+function clearHomeCoreTransition() {
+  if (homeCoreTransitionTimer) {
+    window.clearTimeout(homeCoreTransitionTimer);
+    homeCoreTransitionTimer = null;
+  }
+}
+
+function resetHomeCoreState() {
+  clearHomeCoreTransition();
+  uiState.homeCoreState = 'default';
+  uiState.homeCoreTapTimestamps = [];
+}
 
 function resetProfileAvatarDraft() {
   if (profileAvatarDraft.previewUrl) {
@@ -66,13 +101,17 @@ function resetProfileAvatarDraft() {
 function getPageHtml() {
   const state = getState();
   switch (uiState.screen) {
+    case 'home':
+      return renderHome(state, uiState);
     case 'timeline':
       return renderTimeline(state, uiState);
     case 'search':
       return renderSearch(state, uiState);
     case 'compose':
       return renderCompose({
+        stage: uiState.composeStage,
         selectedTemplateId: uiState.composeTemplateId,
+        selectedBackground: uiState.composeBackgroundColor,
         draft: getActivePost(uiState.composeEditingPostId)?.composeData || null,
         isEditing: Boolean(uiState.composeEditingPostId),
       });
@@ -83,7 +122,7 @@ function getPageHtml() {
     case 'post':
       return renderPostDetail(getActivePost(uiState.previewPostId), { canDelete: isOwnPost(getActivePost(uiState.previewPostId)) });
     default:
-      return renderTimeline(state, uiState);
+      return renderHome(state, uiState);
   }
 }
 
@@ -97,9 +136,25 @@ function isOwnPost(post) {
 }
 
 function renderShell() {
+  const shellClasses = ['app-shell'];
+  const screenAreaClasses = ['screen-area'];
+  const themeName = uiState.homeTheme === 'dark' ? 'dark' : 'light';
+
+  shellClasses.push(`app-shell--theme-${themeName}`);
+
+  if (uiState.screen === 'home') {
+    shellClasses.push('app-shell--home');
+    screenAreaClasses.push('screen-area--home');
+  } else if (uiState.screen === 'timeline') {
+    shellClasses.push('app-shell--timeline');
+    screenAreaClasses.push('screen-area--timeline');
+  } else if (uiState.screen === 'search') {
+    screenAreaClasses.push('screen-area--search');
+  }
+
   app.innerHTML = `
-    <div class="app-shell">
-      <main class="screen-area" id="screenArea"></main>
+    <div class="${shellClasses.join(' ')}">
+      <main class="${screenAreaClasses.join(' ')}" id="screenArea"></main>
       ${renderBottomNav(uiState.screen, uiState)}
       <div id="modalRoot"></div>
     </div>
@@ -135,16 +190,61 @@ function render() {
   bindNavEvents();
 }
 
+function captureViewState() {
+  return {
+    screen: uiState.screen,
+    previewPostId: uiState.previewPostId,
+    profileAuthor: uiState.profileAuthor,
+    postReturnScreen: uiState.postReturnScreen,
+    postReturnProfileAuthor: uiState.postReturnProfileAuthor,
+  };
+}
+
+function restoreViewState(snapshot, fallback = 'home') {
+  if (!snapshot) {
+    navigate(fallback);
+    return;
+  }
+  uiState.screen = snapshot.screen || fallback;
+  uiState.previewPostId = snapshot.previewPostId || null;
+  uiState.commentPostId = null;
+  uiState.profileEditOpen = false;
+  uiState.profileAuthor = uiState.screen === 'profile' ? (snapshot.profileAuthor || null) : null;
+  uiState.postReturnScreen = snapshot.postReturnScreen || 'home';
+  uiState.postReturnProfileAuthor = snapshot.postReturnProfileAuthor || null;
+  render();
+}
+
 function navigate(screen) {
+  if (screen !== 'home') {
+    resetHomeCoreState();
+  }
+  if (screen === 'compose' && uiState.screen !== 'compose') {
+    uiState.composeReturnState = captureViewState();
+  }
+  if (screen === 'profile' && uiState.screen !== 'profile') {
+    uiState.profileReturnState = captureViewState();
+  }
   if (screen !== 'profile') {
     resetProfileAvatarDraft();
+    uiState.profileReturnState = null;
+  }
+  if (screen !== 'home') {
+    uiState.timelineOverlay = null;
   }
   if (screen !== 'compose') {
     uiState.composeEditingPostId = null;
+    uiState.composeStage = 'edit';
+    uiState.composeBackgroundColor = '#f8f4ee';
+    uiState.composeReturnState = null;
   }
   uiState.screen = screen;
   uiState.previewPostId = null;
   uiState.commentPostId = null;
+  if (screen === 'compose') {
+    uiState.composeStage = 'edit';
+    uiState.composeBackgroundColor = '#f8f4ee';
+  }
   if (screen === 'profile') {
     resetProfileAvatarDraft();
     uiState.profileAuthor = null;
@@ -164,13 +264,14 @@ function enterTimelineFromOpening() {
   uiState.previewPostId = null;
   uiState.commentPostId = null;
   uiState.openingTapGuardUntil = Date.now() + 700;
-  uiState.postReturnScreen = 'timeline';
+  uiState.postReturnScreen = 'home';
   uiState.postReturnProfileAuthor = null;
-  navigate('timeline');
+  navigate('home');
 }
 
 function openProfile(authorName) {
   resetProfileAvatarDraft();
+  uiState.profileReturnState = captureViewState();
   uiState.screen = 'profile';
   uiState.previewPostId = null;
   uiState.commentPostId = null;
@@ -181,6 +282,13 @@ function openProfile(authorName) {
   uiState.profileExpanded = true;
   uiState.profileOrbitRotation = authorName ? 0 : 270;
   render();
+}
+
+function closeProfile() {
+  resetProfileAvatarDraft();
+  const snapshot = uiState.profileReturnState;
+  uiState.profileReturnState = null;
+  restoreViewState(snapshot, 'home');
 }
 
 function openPostDetail(postId) {
@@ -195,12 +303,21 @@ function openPostDetail(postId) {
 function openPostEdit(postId) {
   const post = getActivePost(postId);
   if (!post || !isOwnPost(post)) return;
+  uiState.composeReturnState = captureViewState();
   uiState.composeEditingPostId = postId;
+  uiState.composeStage = 'edit';
   uiState.composeTemplateId = post.composeData?.templateId || DEFAULT_COMPOSE_TEMPLATE;
+  uiState.composeBackgroundColor = post.composeData?.backgroundColor || '#f8f4ee';
   uiState.screen = 'compose';
   uiState.previewPostId = null;
   uiState.commentPostId = null;
   render();
+}
+
+function closeCompose() {
+  const snapshot = uiState.composeReturnState;
+  uiState.composeReturnState = null;
+  restoreViewState(snapshot, 'home');
 }
 
 function closePostDetail() {
@@ -254,10 +371,10 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   canvas.height = height;
 
   const textColor = '#171311';
-  const serifFont = '"Cormorant Garamond", "Times New Roman", serif';
+  const serifFont = '"Zen Old Mincho", "Cormorant Garamond", "Times New Roman", serif';
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const finalFontSize = Math.min(width * 0.34, height * 0.68, 168 * ratio);
-  const finalFont = `500 ${finalFontSize}px ${serifFont}`;
+  const finalFontSize = Math.min(width * 0.29, height * 0.56, 156 * ratio);
+  const finalFont = `700 ${finalFontSize}px ${serifFont}`;
   const flowDuration = prefersReducedMotion ? 1300 : 3000;
   const settleDuration = prefersReducedMotion ? 420 : 760;
   const revealDuration = prefersReducedMotion ? 320 : 620;
@@ -288,6 +405,26 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
     return clamp((elapsed - offset) / duration, 0, 1);
   }
 
+  function drawWordmarkGlyph(targetCtx, glyph, x, y, alpha = 1) {
+    targetCtx.save();
+    targetCtx.globalAlpha = alpha;
+    targetCtx.font = finalFont;
+    targetCtx.textAlign = 'left';
+    targetCtx.textBaseline = 'middle';
+    targetCtx.lineJoin = 'round';
+    targetCtx.lineCap = 'round';
+    targetCtx.lineWidth = Math.max(2.4 * ratio, finalFontSize * 0.08);
+    targetCtx.strokeStyle = 'rgba(255, 250, 244, 0.92)';
+    targetCtx.strokeText(glyph, x, y);
+
+    targetCtx.shadowColor = 'rgba(120, 83, 66, 0.18)';
+    targetCtx.shadowBlur = finalFontSize * 0.08;
+    targetCtx.shadowOffsetY = finalFontSize * 0.03;
+    targetCtx.fillStyle = textColor;
+    targetCtx.fillText(glyph, x, y);
+    targetCtx.restore();
+  }
+
   function drawFinalWord(alpha = 1) {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -296,7 +433,7 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   }
 
   function drawRippleWord(alpha = 1, progress = 0) {
-    const centerY = height * 0.52;
+    const centerY = height * 0.5;
     const phase = progress * Math.PI * 0.9;
     const rippleStrength = finalFontSize * 0.018 * (1 - (progress * 0.32));
     const driftX = Math.sin(phase * 0.82) * rippleStrength * 0.55;
@@ -307,7 +444,7 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
     ctx.globalAlpha = alpha;
     ctx.translate((width / 2) + driftX, centerY + driftY);
     ctx.scale(scale, scale);
-    ctx.drawImage(wordCanvas, -width / 2, -height * 0.52);
+    ctx.drawImage(wordCanvas, -width / 2, -height * 0.5);
     ctx.restore();
 
     ctx.save();
@@ -337,13 +474,16 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   wordCanvas.height = height;
   const wordCtx = wordCanvas.getContext('2d');
   if (!wordCtx) return;
-  const logoText = ['L', 'A', 'N', 'I'];
-  const logoSpacing = finalFontSize * 0.06;
+  const logoText = ['V', 'e', 'l', 'n', 'a'];
+  const logoSpacing = finalFontSize * 0.025;
+  const logoPairAdjustments = [-finalFontSize * 0.05, 0, 0, 0];
   wordCtx.font = finalFont;
   const glyphWidths = logoText.map((glyph) => wordCtx.measureText(glyph).width);
-  const totalWordWidth = glyphWidths.reduce((sum, glyphWidth) => sum + glyphWidth, 0) + (logoSpacing * (logoText.length - 1));
+  const totalWordWidth = glyphWidths.reduce((sum, glyphWidth) => sum + glyphWidth, 0)
+    + (logoSpacing * (logoText.length - 1))
+    + logoPairAdjustments.reduce((sum, adjustment) => sum + adjustment, 0);
   const wordStartX = (width / 2) - (totalWordWidth / 2);
-  const wordCenterY = height * 0.52;
+  const wordCenterY = height * 0.5;
   wordCtx.fillStyle = textColor;
   wordCtx.font = finalFont;
   wordCtx.textAlign = 'left';
@@ -352,7 +492,7 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   const logoGlyphs = logoText.map((glyph, index) => {
     const glyphWidth = glyphWidths[index];
     const targetX = logoCursorX;
-    logoCursorX += glyphWidth + logoSpacing;
+    logoCursorX += glyphWidth + logoSpacing + (logoPairAdjustments[index] || 0);
     const fromLeft = index < 2;
     return {
       glyph,
@@ -372,7 +512,7 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   });
 
   logoText.forEach((glyph, index) => {
-    wordCtx.fillText(glyph, logoGlyphs[index].targetX, wordCenterY);
+    drawWordmarkGlyph(wordCtx, glyph, logoGlyphs[index].targetX, wordCenterY);
   });
 
   const streamLetters = [];
@@ -460,12 +600,7 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
       if (alpha <= 0.02) return;
 
       ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = textColor;
-      ctx.font = finalFont;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(glyph.glyph, x, y);
+      drawWordmarkGlyph(ctx, glyph.glyph, x, y, alpha);
       ctx.restore();
     });
 
@@ -494,6 +629,7 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
 }
 
 function bindNavEvents() {
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const wheels = [
     {
       element: document.querySelector('[data-side-wheel="main"]'),
@@ -541,33 +677,88 @@ function bindNavEvents() {
       index,
     }));
 
-    const applyWheelLayout = (focusIndex, isEngaged) => {
+    const currentIndex = Math.max(0, items.findIndex((item) => item.key === getActiveKey()));
+    let engaged = false;
+    let focusIndex = currentIndex;
+    let wheelOffsetY = 0;
+    let activeDragX = 0;
+    let suppressClickUntil = 0;
+    let dragState = null;
+
+    const clampWheelOffsetY = (nextOffset) => {
+      const activeRect = items[focusIndex]?.button.getBoundingClientRect();
+      const halfHeight = (activeRect?.height || 0) / 2;
+      const minCenter = halfHeight;
+      const maxCenter = window.innerHeight - halfHeight;
+      if (maxCenter <= minCenter) return 0;
+      return clamp(nextOffset, minCenter - (window.innerHeight / 2), maxCenter - (window.innerHeight / 2));
+    };
+
+    const applyWheelLayout = (nextFocusIndex, isEngaged) => {
       const anchorX = element.classList.contains('side-wheel--left') ? 76 : 24;
       const stepY = items.length <= 2 ? 88 : 76;
 
+      element.style.setProperty('--wheel-offset-y', `${wheelOffsetY}px`);
+      element.classList.toggle('is-dragging', Boolean(dragState?.moved));
+
       items.forEach((entry) => {
-        const y = (entry.index - focusIndex) * stepY;
-        const opacity = isEngaged ? 1 : (entry.index === focusIndex ? 1 : 0);
-        const scale = isEngaged ? (entry.index === focusIndex ? 1 : 0.9) : 1;
+        const y = (entry.index - nextFocusIndex) * stepY;
+        const opacity = isEngaged ? 1 : (entry.index === nextFocusIndex ? 1 : 0);
+        const scale = isEngaged ? (entry.index === nextFocusIndex ? 1 : 0.9) : 1;
+        const dragX = !isEngaged && entry.index === nextFocusIndex ? activeDragX : 0;
 
         entry.button.style.setProperty('--slot-x', `${anchorX}%`);
         entry.button.style.setProperty('--slot-y', `${y}px`);
         entry.button.style.setProperty('--slot-scale', String(scale));
         entry.button.style.setProperty('--slot-opacity', String(opacity));
-        entry.button.style.setProperty('--slot-depth', String(Math.abs(entry.index - focusIndex)));
-        entry.button.classList.toggle('is-active', entry.index === focusIndex);
+        entry.button.style.setProperty('--slot-depth', String(Math.abs(entry.index - nextFocusIndex)));
+        entry.button.style.setProperty('--drag-x', `${dragX}px`);
+        entry.button.style.setProperty('--drag-y', '0px');
+        entry.button.classList.toggle('is-active', entry.index === nextFocusIndex);
+        entry.button.classList.toggle('is-dragging', Boolean(dragState?.moved) && entry.index === nextFocusIndex);
       });
     };
 
-    const currentIndex = Math.max(0, items.findIndex((item) => item.key === getActiveKey()));
-    applyWheelLayout(currentIndex, false);
+    const finishDrag = (event) => {
+      if (!dragState) return;
+      if (event?.pointerId != null && dragState.pointerId !== event.pointerId) return;
+      const { button, pointerId, moved } = dragState;
+      if (button.hasPointerCapture?.(pointerId)) {
+        button.releasePointerCapture(pointerId);
+      }
+      dragState = null;
+      if (moved) {
+        suppressClickUntil = Date.now() + 220;
+      }
+      applyWheelLayout(focusIndex, engaged);
+    };
 
-    let engaged = false;
-    let focusIndex = currentIndex;
+    const handleDragMove = (event) => {
+      if (!dragState || dragState.pointerId !== event.pointerId) return;
+      const deltaX = event.clientX - dragState.startX;
+      const deltaY = event.clientY - dragState.startY;
+      if (!dragState.moved && Math.hypot(deltaX, deltaY) < 8) return;
+      dragState.moved = true;
+
+      wheelOffsetY = clampWheelOffsetY(dragState.startWheelOffsetY + deltaY);
+      if (dragState.mode === 'collapsed') {
+        const minCenterX = dragState.halfWidth;
+        const maxCenterX = window.innerWidth - dragState.halfWidth;
+        const nextCenterX = clamp(dragState.startCenterX + deltaX, minCenterX, maxCenterX);
+        activeDragX = nextCenterX - dragState.anchorCenterX;
+      } else {
+        activeDragX = 0;
+      }
+
+      applyWheelLayout(focusIndex, engaged);
+    };
+
+    applyWheelLayout(currentIndex, false);
 
     const openWheel = () => {
       engaged = true;
       element.classList.add('is-engaged');
+      activeDragX = 0;
       applyWheelLayout(focusIndex, true);
     };
 
@@ -588,7 +779,37 @@ function bindNavEvents() {
     };
 
     buttons.forEach((button) => {
+      button.addEventListener('pointerdown', (event) => {
+        const buttonIndex = Number(button.dataset.sideIndex || 0);
+        if (buttonIndex !== focusIndex) return;
+
+        const rect = button.getBoundingClientRect();
+        dragState = {
+          pointerId: event.pointerId,
+          button,
+          mode: engaged ? 'engaged' : 'collapsed',
+          startX: event.clientX,
+          startY: event.clientY,
+          startCenterX: rect.left + (rect.width / 2),
+          anchorCenterX: rect.left + (rect.width / 2) - activeDragX,
+          halfWidth: rect.width / 2,
+          startWheelOffsetY: wheelOffsetY,
+          moved: false,
+        };
+        button.setPointerCapture(event.pointerId);
+      });
+
+      button.addEventListener('pointermove', handleDragMove);
+      button.addEventListener('pointerup', finishDrag);
+      button.addEventListener('pointercancel', finishDrag);
+      button.addEventListener('lostpointercapture', finishDrag);
+
       button.addEventListener('click', (event) => {
+        if (Date.now() < suppressClickUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         event.preventDefault();
         const buttonIndex = Number(button.dataset.sideIndex || 0);
         if (!engaged) {
@@ -657,8 +878,116 @@ function bindPostInteractions(scope = document) {
   });
 }
 
+function bindHomeEvents() {
+  const homeRoot = document.querySelector('.orbit-home');
+  const syncHomeCoreState = () => {
+    if (!homeRoot) return;
+    homeRoot.classList.remove('orbit-home--default', 'orbit-home--collapsing', 'orbit-home--sheep');
+    homeRoot.classList.add(`orbit-home--${uiState.homeCoreState}`);
+  };
+
+  document.querySelectorAll('[data-home-theme-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      uiState.homeTheme = uiState.homeTheme === 'dark' ? 'light' : 'dark';
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-home-core-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (uiState.homeCoreState !== 'default') return;
+      const now = Date.now();
+      uiState.homeCoreTapTimestamps = [...uiState.homeCoreTapTimestamps.filter((time) => now - time < 900), now];
+      if (uiState.homeCoreTapTimestamps.length < 3) return;
+      uiState.homeCoreTapTimestamps = [];
+      uiState.homeCoreState = 'collapsing';
+      syncHomeCoreState();
+      clearHomeCoreTransition();
+      homeCoreTransitionTimer = window.setTimeout(() => {
+        uiState.homeCoreState = 'sheep';
+        syncHomeCoreState();
+      }, 620);
+    });
+  });
+
+  document.querySelectorAll('[data-home-sheep-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (uiState.homeCoreState !== 'sheep') return;
+      resetHomeCoreState();
+      syncHomeCoreState();
+    });
+  });
+}
+
 function bindTimelineEvents() {
   bindPostInteractions(document.getElementById('screenArea'));
+
+  const viewport = document.querySelector('[data-timeline-pan-viewport]');
+  const surface = document.querySelector('[data-timeline-pan-surface]');
+  if (viewport && surface) {
+    const clampPan = (nextX, nextY) => {
+      const minX = Math.min(0, viewport.clientWidth - surface.scrollWidth);
+      const minY = Math.min(0, viewport.clientHeight - surface.scrollHeight);
+      return {
+        x: Math.max(minX, Math.min(0, nextX)),
+        y: Math.max(minY, Math.min(0, nextY)),
+      };
+    };
+
+    const applyPan = (nextX, nextY) => {
+      const clamped = clampPan(nextX, nextY);
+      uiState.timelinePan = clamped;
+      surface.style.transform = `translate(${clamped.x}px, ${clamped.y}px)`;
+    };
+
+    applyPan(uiState.timelinePan?.x ?? -360, uiState.timelinePan?.y ?? -220);
+
+    let dragState = null;
+
+    surface.addEventListener('pointerdown', (event) => {
+      dragState = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: uiState.timelinePan?.x ?? -360,
+        originY: uiState.timelinePan?.y ?? -220,
+        moved: false,
+      };
+      viewport.classList.add('is-dragging');
+      surface.setPointerCapture?.(event.pointerId);
+    });
+
+    surface.addEventListener('pointermove', (event) => {
+      if (!dragState || dragState.pointerId !== event.pointerId) return;
+      const deltaX = event.clientX - dragState.startX;
+      const deltaY = event.clientY - dragState.startY;
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+        dragState.moved = true;
+        event.preventDefault();
+      }
+      applyPan(dragState.originX + deltaX, dragState.originY + deltaY);
+    });
+
+    const finishDrag = (event) => {
+      if (!dragState || dragState.pointerId !== event.pointerId) return;
+      viewport.classList.remove('is-dragging');
+      if (dragState.moved) {
+        uiState.openingTapGuardUntil = Date.now() + 180;
+      }
+      dragState = null;
+      surface.releasePointerCapture?.(event.pointerId);
+    };
+
+    surface.addEventListener('pointerup', finishDrag);
+    surface.addEventListener('pointercancel', finishDrag);
+  }
+
+  document.querySelectorAll('[data-timeline-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      uiState.timelineTab = button.dataset.timelineTab || 'recommended';
+      renderScreen();
+    });
+  });
 }
 
 function bindSearchEvents() {
@@ -689,7 +1018,34 @@ function bindSearchEvents() {
   });
 }
 
+function bindScreenNavigationEvents() {
+  document.querySelectorAll('[data-home-nav]').forEach((button) => {
+    button.addEventListener('click', () => {
+      navigate(button.dataset.homeNav);
+    });
+  });
+
+  document.querySelectorAll('[data-close-profile]').forEach((button) => {
+    button.addEventListener('click', () => {
+      closeProfile();
+    });
+  });
+
+  document.querySelectorAll('[data-close-compose]').forEach((button) => {
+    button.addEventListener('click', () => {
+      closeCompose();
+    });
+  });
+}
+
 function buildComposeCaption(values) {
+  if (values.templateId === 'page8' && Array.isArray(values.customLayout?.textBoxes)) {
+    return values.customLayout.textBoxes
+      .map((box) => String(box.text || '').trim())
+      .filter(Boolean)
+      .join(' / ')
+      .slice(0, 120);
+  }
   return [values.headline, values.subhead, values.intro, values.body]
     .map((value) => value.trim())
     .filter(Boolean)
@@ -810,7 +1166,7 @@ function drawSlotPlaceholder(ctx, rect) {
   ctx.restore();
 }
 
-async function renderComposeTemplate(values, files) {
+async function renderComposeTemplate(values, files, extra = {}) {
   const designWidth = 1240;
   const designHeight = 1754;
   const width = 2480;
@@ -837,19 +1193,26 @@ async function renderComposeTemplate(values, files) {
     drawFileCover,
     drawSlotPlaceholder,
     defaults: composePreviewDefaults,
+    page8Files: extra.page8Files || {},
   });
 
   return canvas.toDataURL('image/png');
 }
 
 function bindComposeEvents() {
-  const form = document.getElementById('composeForm');
-  if (!form) return;
-
   const composePage = document.querySelector('.page--compose');
+  if (!composePage) return;
+  const composeStage = composePage.dataset.composeStage || 'select';
+  const form = document.getElementById('composeForm');
+  const composeRoot = form || composePage;
   const composeSheet = document.getElementById('composeSheet');
   const composeFrame = composeSheet?.querySelector('.compose-sheet__frame') || null;
+  const customCanvas = composeSheet?.querySelector('[data-custom-canvas]') || null;
   const composeDraft = getActivePost(uiState.composeEditingPostId)?.composeData || null;
+  const page8DraftValues = {
+    ...composePreviewDefaults,
+    ...(composeDraft || {}),
+  };
   const previewUrls = {
     imageInputPrimary: '',
     imageInputSecondary: '',
@@ -864,12 +1227,15 @@ function bindComposeEvents() {
   const tagPanel = document.querySelector('[data-compose-tags]');
   const previewToggle = document.querySelector('[data-toggle-compose-preview]');
   const customTemplateControls = document.querySelector('[data-custom-template-controls]');
+  const customInspector = document.querySelector('[data-custom-inspector]');
   const editables = Array.from(document.querySelectorAll('[data-editable]'));
   const customLayoutState = {
     options: normalizePage8Options(composeDraft?.customLayout || {}),
     imageBoxes: normalizePage8ImageBoxes(composeDraft?.customLayout || {}),
-    resolved: null,
+    textBoxes: normalizePage8TextBoxes(composeDraft?.customLayout || {}, page8DraftValues),
+    selectedId: null,
   };
+  const customImageFiles = {};
   const editableKeyMap = {
     headline: document.querySelector('[data-editable="headline"]'),
     subhead: document.querySelector('[data-editable="subhead"]'),
@@ -882,6 +1248,11 @@ function bindComposeEvents() {
     primary: document.querySelector('[data-slot="imageInputPrimary"]'),
     secondary: document.querySelector('[data-slot="imageInputSecondary"]'),
     accent: document.querySelector('[data-slot="imageInputAccent"]'),
+  };
+
+  const switchComposeStage = (nextStage) => {
+    uiState.composeStage = nextStage;
+    render();
   };
 
   function loadImageSize(file) {
@@ -910,6 +1281,26 @@ function bindComposeEvents() {
     const slotState = selectedFiles[stateKey];
     if (!slotImage) return;
     slotImage.style.backgroundPosition = `${(slotState.position.x || 0.5) * 100}% ${(slotState.position.y || 0.5) * 100}%`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function createCustomId(prefix) {
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  }
+
+  function getCustomImageState(boxId) {
+    if (!customImageFiles[boxId]) {
+      customImageFiles[boxId] = { file: null, position: { x: 0.5, y: 0.5 }, imageSize: null, previewUrl: '' };
+    }
+    return customImageFiles[boxId];
   }
 
   function normalizeEditableContent(element) {
@@ -992,6 +1383,9 @@ function bindComposeEvents() {
         element.blur();
       }
     });
+    if (composeSheet?.dataset.template === 'page8') {
+      renderCustomCanvas();
+    }
   }
 
   function getEditableValue(name) {
@@ -1002,9 +1396,11 @@ function bindComposeEvents() {
 
   function setPreviewBackground() {
     if (!composeSheet) return;
-    const checked = form.querySelector('input[name="backgroundColor"]:checked');
-    composeSheet.style.setProperty('--sheet-bg', checked?.value || '#f8f4ee');
-    form.querySelectorAll('.color-chip').forEach((chip) => {
+    const checked = composeRoot.querySelector('input[name="backgroundColor"]:checked');
+    const nextBackground = checked?.value || uiState.composeBackgroundColor || '#f8f4ee';
+    uiState.composeBackgroundColor = nextBackground;
+    composeSheet.style.setProperty('--sheet-bg', nextBackground);
+    composeRoot.querySelectorAll('.color-chip').forEach((chip) => {
       const input = chip.querySelector('input[name="backgroundColor"]');
       chip.classList.toggle('is-active', Boolean(input?.checked));
     });
@@ -1015,20 +1411,20 @@ function bindComposeEvents() {
     const nextTemplateId = templateId || DEFAULT_COMPOSE_TEMPLATE;
     composeSheet.dataset.template = nextTemplateId;
     uiState.composeTemplateId = nextTemplateId;
-    form.querySelectorAll('.template-thumb').forEach((card) => {
+    composeRoot.querySelectorAll('.template-thumb').forEach((card) => {
       const input = card.querySelector('input[name="templateId"]');
       card.classList.toggle('is-active', input?.value === nextTemplateId);
     });
     const isCustomTemplate = nextTemplateId === 'page8';
     if (customTemplateControls) {
-      customTemplateControls.hidden = !isCustomTemplate;
+      customTemplateControls.hidden = true;
     }
     composeSheet.classList.toggle('compose-sheet--custom', isCustomTemplate);
     applyCustomLayout();
   }
 
   function focusSelectedTemplateCard(templateId) {
-    const selectedRadio = form.querySelector(`input[name="templateId"][value="${templateId}"]`);
+    const selectedRadio = composeRoot.querySelector(`input[name="templateId"][value="${templateId}"]`);
     selectedRadio?.closest('.template-thumb')?.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',
@@ -1037,7 +1433,7 @@ function bindComposeEvents() {
   }
 
   function focusSelectedColorCard(colorValue) {
-    const selectedRadio = form.querySelector(`input[name="backgroundColor"][value="${colorValue}"]`);
+    const selectedRadio = composeRoot.querySelector(`input[name="backgroundColor"][value="${colorValue}"]`);
     selectedRadio?.closest('.color-chip')?.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',
@@ -1063,6 +1459,675 @@ function bindComposeEvents() {
     slotImage.hidden = true;
     slotPlaceholder.hidden = false;
     removeButton.hidden = true;
+  }
+
+  function clampCustomBoxRect(box, minimums) {
+    const width = Math.min(PAGE8_BOUNDS.width, Math.max(minimums.width, box.width));
+    const height = Math.min(PAGE8_BOUNDS.height, Math.max(minimums.height, box.height));
+    return {
+      ...box,
+      x: Math.min(PAGE8_BOUNDS.x + PAGE8_BOUNDS.width - width, Math.max(PAGE8_BOUNDS.x, snapPage8Value(box.x))),
+      y: Math.min(PAGE8_BOUNDS.y + PAGE8_BOUNDS.height - height, Math.max(PAGE8_BOUNDS.y, snapPage8Value(box.y))),
+      width: snapPage8Value(width),
+      height: snapPage8Value(height),
+    };
+  }
+
+  function rectsOverlap(a, b, padding = 0.02) {
+    return !(
+      a.x + a.width + padding <= b.x ||
+      b.x + b.width + padding <= a.x ||
+      a.y + a.height + padding <= b.y ||
+      b.y + b.height + padding <= a.y
+    );
+  }
+
+  function getCustomRect(item) {
+    return { x: item.x, y: item.y, width: item.width, height: item.height };
+  }
+
+  function getCustomBlockers(itemId, options = {}) {
+    const { ignoreText = false, ignoreImages = false } = options;
+    return [
+      ...(!ignoreImages
+        ? customLayoutState.imageBoxes.filter((item) => item.id !== itemId).map((item) => getCustomRect(item))
+        : []),
+      ...(!ignoreText
+        ? customLayoutState.textBoxes.filter((item) => item.id !== itemId).map((item) => getCustomRect(item))
+        : []),
+    ];
+  }
+
+  function isSafeCustomPosition(candidate, itemId, options = {}) {
+    const rect = getCustomRect(candidate);
+    const blockers = getCustomBlockers(itemId, options);
+    return !blockers.some((blocker) => rectsOverlap(rect, blocker));
+  }
+
+  function findNearestSafeBoxPosition(item, itemId, minimums, options = {}) {
+    const original = clampCustomBoxRect({ ...item }, minimums);
+    if (isSafeCustomPosition(original, itemId, options)) {
+      return original;
+    }
+
+    const directions = [
+      [0, -1],
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+      [-1, -1],
+    ];
+    const step = PAGE8_GRID * 2;
+
+    for (let ring = 1; ring <= 18; ring += 1) {
+      for (const [dx, dy] of directions) {
+        const candidate = clampCustomBoxRect({
+          ...original,
+          x: original.x + (dx * step * ring),
+          y: original.y + (dy * step * ring),
+        }, minimums);
+        if (isSafeCustomPosition(candidate, itemId, options)) {
+          return candidate;
+        }
+      }
+    }
+
+    for (let y = PAGE8_BOUNDS.y; y <= PAGE8_BOUNDS.y + PAGE8_BOUNDS.height - original.height; y += step) {
+      for (let x = PAGE8_BOUNDS.x; x <= PAGE8_BOUNDS.x + PAGE8_BOUNDS.width - original.width; x += step) {
+        const candidate = clampCustomBoxRect({ ...original, x, y }, minimums);
+        if (isSafeCustomPosition(candidate, itemId, options)) {
+          return candidate;
+        }
+      }
+    }
+
+    return original;
+  }
+
+  function carveHorizontalSlots(target, blockers, padding = 0.018) {
+    const targetTop = target.y - padding;
+    const targetBottom = target.y + target.height + padding;
+    const boundsLeft = PAGE8_BOUNDS.x;
+    const boundsRight = PAGE8_BOUNDS.x + PAGE8_BOUNDS.width;
+    let slots = [{ left: boundsLeft, right: boundsRight }];
+
+    blockers.forEach((blocker) => {
+      const blockerTop = blocker.y - padding;
+      const blockerBottom = blocker.y + blocker.height + padding;
+      if (blockerBottom <= targetTop || blockerTop >= targetBottom) return;
+      const blockLeft = Math.max(boundsLeft, blocker.x - padding);
+      const blockRight = Math.min(boundsRight, blocker.x + blocker.width + padding);
+      slots = slots.flatMap((slot) => {
+        if (blockRight <= slot.left || blockLeft >= slot.right) {
+          return [slot];
+        }
+        const next = [];
+        if (blockLeft > slot.left) {
+          next.push({ left: slot.left, right: blockLeft });
+        }
+        if (blockRight < slot.right) {
+          next.push({ left: blockRight, right: slot.right });
+        }
+        return next;
+      });
+    });
+
+    return slots.filter((slot) => (slot.right - slot.left) >= target.width);
+  }
+
+  function findSafeTextPosition(textItem, blockers) {
+    const original = clampCustomBoxRect({ ...textItem }, PAGE8_MIN_TEXT_SIZE);
+    const candidateYs = [];
+    for (let ring = 0; ring <= 24; ring += 1) {
+      const upward = snapPage8Value(original.y - (ring * PAGE8_GRID));
+      const downward = snapPage8Value(original.y + (ring * PAGE8_GRID));
+      if (upward >= PAGE8_BOUNDS.y) candidateYs.push(upward);
+      if (downward <= PAGE8_BOUNDS.y + PAGE8_BOUNDS.height - original.height && downward !== upward) {
+        candidateYs.push(downward);
+      }
+    }
+
+    let bestCandidate = original;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    candidateYs.forEach((candidateY) => {
+      const baseTarget = {
+        ...original,
+        y: candidateY,
+      };
+      const slots = carveHorizontalSlots(baseTarget, blockers);
+      slots.forEach((slot) => {
+        const minX = slot.left;
+        const maxX = slot.right - original.width;
+        const clampedX = snapPage8Value(Math.min(maxX, Math.max(minX, original.x)));
+        const candidate = clampCustomBoxRect({
+          ...original,
+          x: clampedX,
+          y: candidateY,
+        }, PAGE8_MIN_TEXT_SIZE);
+        if (blockers.some((blocker) => rectsOverlap(getCustomRect(candidate), blocker))) return;
+        const dx = Math.abs(candidate.x - original.x);
+        const dy = Math.abs(candidate.y - original.y);
+        const score = (dy * 2) + dx;
+        if (score < bestScore) {
+          bestScore = score;
+          bestCandidate = candidate;
+        }
+      });
+    });
+
+    return bestCandidate;
+  }
+
+  function reflowTextBoxes(movedId) {
+    const movedRecord = getCustomItemRecord(movedId);
+    if (!movedRecord || movedRecord.type !== 'image') return;
+
+    customLayoutState.textBoxes = customLayoutState.textBoxes.map((textBox) => {
+      const blockers = [
+        ...customLayoutState.imageBoxes.filter((item) => item.id !== textBox.id).map((item) => getCustomRect(item)),
+        ...customLayoutState.textBoxes.filter((item) => item.id !== textBox.id).map((item) => getCustomRect(item)),
+      ];
+      return findSafeTextPosition(textBox, blockers);
+    });
+  }
+
+  function getTextBlockers(itemId) {
+    return [
+      ...customLayoutState.imageBoxes.filter((item) => item.id !== itemId).map((item) => getCustomRect(item)),
+      ...customLayoutState.textBoxes.filter((item) => item.id !== itemId).map((item) => getCustomRect(item)),
+    ];
+  }
+
+  function getCustomItemRecord(itemId) {
+    const imageIndex = customLayoutState.imageBoxes.findIndex((box) => box.id === itemId);
+    if (imageIndex >= 0) {
+      return { type: 'image', collection: customLayoutState.imageBoxes, index: imageIndex, item: customLayoutState.imageBoxes[imageIndex] };
+    }
+    const textIndex = customLayoutState.textBoxes.findIndex((box) => box.id === itemId);
+    if (textIndex >= 0) {
+      return { type: 'text', collection: customLayoutState.textBoxes, index: textIndex, item: customLayoutState.textBoxes[textIndex] };
+    }
+    return null;
+  }
+
+  function getCustomItemMinimums(type) {
+    return type === 'image' ? PAGE8_MIN_IMAGE_SIZE : PAGE8_MIN_TEXT_SIZE;
+  }
+
+  function syncCustomSelection() {
+    if (!customCanvas) return;
+    customCanvas.querySelectorAll('[data-custom-item]').forEach((item) => {
+      item.classList.toggle('is-selected', item.dataset.customItem === customLayoutState.selectedId);
+    });
+  }
+
+  function applyCustomItemRect(itemId, rectSource) {
+    const target = customCanvas?.querySelector(`[data-custom-item="${itemId}"]`);
+    if (!target) return;
+    const rect = page8RectToPercent(rectSource);
+    target.style.left = rect.left;
+    target.style.top = rect.top;
+    target.style.width = rect.width;
+    target.style.height = rect.height;
+  }
+
+  function applyAllCustomItemRects() {
+    [
+      ...customLayoutState.imageBoxes,
+      ...customLayoutState.textBoxes,
+    ].forEach((item) => {
+      applyCustomItemRect(item.id, item);
+    });
+  }
+
+  function selectCustomItem(itemId, options = {}) {
+    const { rerender = false } = options;
+    customLayoutState.selectedId = itemId;
+    if (rerender && composeSheet?.dataset.template === 'page8') {
+      renderCustomCanvas();
+      return;
+    }
+    syncCustomSelection();
+    renderCustomInspector();
+  }
+
+  function renderCustomInspector() {
+    if (!customInspector || composeSheet?.dataset.template !== 'page8') return;
+    const record = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+    if (!record) {
+      customInspector.innerHTML = `
+        <p class="compose-custom-inspector__title">Selection</p>
+        <p class="compose-custom-inspector__note">ボックスを選ぶと、ここで内容や見た目を調整できます。</p>
+      `;
+      return;
+    }
+
+    if (record.type === 'image') {
+      customInspector.innerHTML = `
+        <p class="compose-custom-inspector__title">Image Box</p>
+        <p class="compose-custom-inspector__note">画像面をタップで差し替え。移動は上部バー、サイズ変更は右下ハンドルです。</p>
+        <div class="compose-custom-inspector__meta">
+          <span>W ${(record.item.width * 100).toFixed(0)}%</span>
+          <span>H ${(record.item.height * 100).toFixed(0)}%</span>
+        </div>
+        <div class="compose-custom-inspector__segmented">
+          <button type="button" data-custom-control="delete">Delete</button>
+        </div>
+      `;
+    } else {
+      customInspector.innerHTML = `
+      <p class="compose-custom-inspector__title">Text Box</p>
+      <label class="compose-custom-inspector__field">
+        <span>Text</span>
+        <textarea class="compose-custom-inspector__textarea" data-custom-control="text">${escapeHtml(record.item.text)}</textarea>
+      </label>
+      <label class="compose-custom-inspector__field">
+        <span>Size</span>
+        <input class="compose-custom-inspector__range" data-custom-control="fontSize" type="range" min="14" max="54" value="${Math.round(record.item.fontSize * 520)}" />
+      </label>
+      <label class="compose-custom-inspector__field">
+        <span>Weight</span>
+        <input class="compose-custom-inspector__range" data-custom-control="weight" type="range" min="400" max="700" step="100" value="${record.item.weight}" />
+      </label>
+      <div class="compose-custom-inspector__field">
+        <span>Align</span>
+        <div class="compose-custom-inspector__segmented">
+          <button type="button" data-custom-align="left" class="${record.item.align === 'left' ? 'is-active' : ''}">Left</button>
+          <button type="button" data-custom-align="center" class="${record.item.align === 'center' ? 'is-active' : ''}">Center</button>
+          <button type="button" data-custom-align="right" class="${record.item.align === 'right' ? 'is-active' : ''}">Right</button>
+        </div>
+      </div>
+      <div class="compose-custom-inspector__field">
+        <span>Typeface</span>
+        <div class="compose-custom-inspector__segmented">
+          <button type="button" data-custom-family="sans" class="${record.item.family === 'sans' ? 'is-active' : ''}">Sans</button>
+          <button type="button" data-custom-family="serif" class="${record.item.family === 'serif' ? 'is-active' : ''}">Serif</button>
+          <button type="button" data-custom-control="delete">Delete</button>
+        </div>
+      </div>
+    `;
+      const textArea = customInspector.querySelector('[data-custom-control="text"]');
+      textArea?.addEventListener('focus', (event) => {
+        const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+        if (!nextRecord || nextRecord.type !== 'text') return;
+        if (nextRecord.item.isDefaultText && nextRecord.item.text.trim().toLowerCase() === 'text') {
+          nextRecord.item.text = '';
+          nextRecord.item.isDefaultText = false;
+          event.target.value = '';
+          const liveText = customCanvas?.querySelector(`[data-custom-text="${nextRecord.item.id}"]`);
+          if (liveText) {
+            liveText.textContent = '';
+          }
+        }
+      });
+      textArea?.addEventListener('input', (event) => {
+        const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+        if (!nextRecord || nextRecord.type !== 'text') return;
+        nextRecord.item.text = event.target.value.replace(/\r/g, '');
+        nextRecord.item.isDefaultText = false;
+        const liveText = customCanvas?.querySelector(`[data-custom-text="${nextRecord.item.id}"]`);
+        if (liveText && liveText !== document.activeElement) {
+          liveText.textContent = nextRecord.item.text;
+        }
+      });
+
+      customInspector.querySelector('[data-custom-control="fontSize"]')?.addEventListener('input', (event) => {
+        const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+        if (!nextRecord || nextRecord.type !== 'text') return;
+        nextRecord.item.fontSize = Number(event.target.value) / 520;
+        renderCustomCanvas();
+      });
+
+      customInspector.querySelector('[data-custom-control="weight"]')?.addEventListener('input', (event) => {
+        const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+        if (!nextRecord || nextRecord.type !== 'text') return;
+        nextRecord.item.weight = Number(event.target.value);
+        renderCustomCanvas();
+      });
+
+      customInspector.querySelectorAll('[data-custom-align]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+          if (!nextRecord || nextRecord.type !== 'text') return;
+          nextRecord.item.align = button.dataset.customAlign || 'left';
+          renderCustomCanvas();
+        });
+      });
+
+      customInspector.querySelectorAll('[data-custom-family]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+          if (!nextRecord || nextRecord.type !== 'text') return;
+          nextRecord.item.family = button.dataset.customFamily === 'serif' ? 'serif' : 'sans';
+          nextRecord.item.weight = nextRecord.item.family === 'serif'
+            ? Math.max(500, nextRecord.item.weight)
+            : Math.min(600, nextRecord.item.weight);
+          renderCustomCanvas();
+        });
+      });
+    }
+
+    customInspector.querySelector('[data-custom-control="delete"]')?.addEventListener('click', () => {
+      const itemId = customLayoutState.selectedId;
+      const nextRecord = itemId ? getCustomItemRecord(itemId) : null;
+      if (!nextRecord) return;
+      nextRecord.collection.splice(nextRecord.index, 1);
+      if (nextRecord.type === 'image') {
+        const state = customImageFiles[itemId];
+        if (state?.previewUrl) {
+          URL.revokeObjectURL(state.previewUrl);
+        }
+        delete customImageFiles[itemId];
+        reflowTextBoxes(itemId);
+      }
+      customLayoutState.selectedId = null;
+      renderCustomCanvas();
+    });
+  }
+
+  function renderCustomCanvas() {
+    if (!customCanvas || !composeSheet) return;
+    const isCustomTemplate = composeSheet.dataset.template === 'page8';
+    const interactive = composeStage === 'edit' && !composePage?.classList.contains('is-preview-mode');
+    customCanvas.hidden = !isCustomTemplate;
+    if (!isCustomTemplate) {
+      customCanvas.innerHTML = '';
+      renderCustomInspector();
+      return;
+    }
+
+    const itemIds = [
+      ...customLayoutState.imageBoxes.map((box) => box.id),
+      ...customLayoutState.textBoxes.map((box) => box.id),
+    ];
+    if (!customLayoutState.selectedId || !itemIds.includes(customLayoutState.selectedId)) {
+      customLayoutState.selectedId = itemIds[0] || null;
+    }
+
+    const imageMarkup = customLayoutState.imageBoxes.map((box) => {
+      const rect = page8RectToPercent(box);
+      const state = getCustomImageState(box.id);
+      const hasImage = Boolean(state.previewUrl || state.file);
+      const selectedClass = `${customLayoutState.selectedId === box.id ? ' is-selected' : ''}${hasImage ? '' : ' is-empty'}`;
+      const surfaceMarkup = hasImage
+        ? `<div class="compose-custom-item__image" style="background-image:url('${state.previewUrl}');background-position:${(state.position.x || 0.5) * 100}% ${(state.position.y || 0.5) * 100}%;"></div>`
+        : `<div class="compose-custom-item__placeholder"><span class="compose-custom-item__plus">${getIcon('compose')}</span></div>`;
+      return `
+        <div
+          class="compose-custom-item compose-custom-item--image${selectedClass}"
+          data-custom-item="${box.id}"
+          data-custom-type="image"
+          style="left:${rect.left};top:${rect.top};width:${rect.width};height:${rect.height};"
+        >
+          ${interactive ? `<input class="field__file" id="custom-image-${box.id}" type="file" accept="image/*" />` : ''}
+          ${interactive
+            ? `<div class="compose-custom-item__surface compose-custom-item__surface--image" data-custom-surface="${box.id}">${surfaceMarkup}</div>`
+            : `<div class="compose-custom-item__surface compose-custom-item__surface--image">${surfaceMarkup}</div>`}
+          ${interactive ? `<button class="compose-custom-item__remove" type="button" data-custom-remove="${box.id}" aria-label="remove image box">&times;</button>` : ''}
+          ${interactive ? `<button class="compose-custom-item__resize" type="button" data-custom-resize="${box.id}" aria-label="resize image box"></button>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    const textMarkup = customLayoutState.textBoxes.map((box) => {
+      const rect = page8RectToPercent(box);
+      const selectedClass = customLayoutState.selectedId === box.id ? ' is-selected' : '';
+      return `
+        <div
+          class="compose-custom-item compose-custom-item--text${selectedClass}"
+          data-custom-item="${box.id}"
+          data-custom-type="text"
+          style="left:${rect.left};top:${rect.top};width:${rect.width};height:${rect.height};"
+        >
+          <div
+            class="compose-custom-item__text"
+            data-custom-text="${box.id}"
+            contenteditable="${interactive ? 'true' : 'false'}"
+            spellcheck="false"
+            style="text-align:${box.align};font-size:${Math.max(11, box.fontSize * 520)}px;line-height:${box.lineHeight};font-family:${box.family === 'serif' ? `'Cormorant Garamond', 'Times New Roman', serif` : `'Noto Sans JP', sans-serif`};font-weight:${box.weight};"
+          >${escapeHtml(box.text)}</div>
+          ${interactive ? `<button class="compose-custom-item__remove" type="button" data-custom-remove="${box.id}" aria-label="remove text box">&times;</button>` : ''}
+          ${interactive ? `<button class="compose-custom-item__resize" type="button" data-custom-resize="${box.id}" aria-label="resize text box"></button>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    customCanvas.innerHTML = `${imageMarkup}${textMarkup}`;
+    renderCustomInspector();
+
+    customCanvas.onpointerdown = (event) => {
+      if (event.target !== customCanvas) return;
+      customLayoutState.selectedId = null;
+      syncCustomSelection();
+      renderCustomInspector();
+    };
+
+    customCanvas.querySelectorAll('[data-custom-item]').forEach((item) => {
+      let dragState = null;
+
+      item.addEventListener('pointerdown', (event) => {
+        const itemId = item.dataset.customItem || '';
+        const record = getCustomItemRecord(itemId);
+        if (!record || !composeFrame) return;
+        if (event.target.closest('[data-custom-remove], [data-custom-resize]')) return;
+        event.preventDefault();
+        const textSurface = event.target.closest('[data-custom-text]');
+        const imageState = record.type === 'image' ? getCustomImageState(itemId) : null;
+        selectCustomItem(itemId);
+        const frameRect = composeFrame.getBoundingClientRect();
+        dragState = {
+          pointerId: event.pointerId,
+          itemId,
+          mode: 'move',
+          originX: record.item.x,
+          originY: record.item.y,
+          startX: event.clientX,
+          startY: event.clientY,
+          frameWidth: frameRect.width,
+          frameHeight: frameRect.height,
+          type: record.type,
+          targetSurface: record.type === 'image' && !(imageState?.previewUrl || imageState?.file)
+            ? event.target.closest('[data-custom-surface]')
+            : null,
+          targetText: textSurface,
+          dragged: false,
+        };
+        item.setPointerCapture?.(event.pointerId);
+      });
+
+      item.addEventListener('pointermove', (event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - dragState.startX;
+        const deltaY = event.clientY - dragState.startY;
+        if (!dragState.dragged && Math.hypot(deltaX, deltaY) < 6) return;
+        dragState.dragged = true;
+        event.preventDefault();
+        const record = getCustomItemRecord(dragState.itemId);
+        if (!record) return;
+        const previousRect = {
+          x: record.item.x,
+          y: record.item.y,
+          width: record.item.width,
+          height: record.item.height,
+        };
+        record.item.x = dragState.originX + (deltaX / dragState.frameWidth);
+        record.item.y = dragState.originY + (deltaY / dragState.frameHeight);
+        Object.assign(record.item, clampCustomBoxRect(record.item, getCustomItemMinimums(record.type)));
+        const safetyOptions = record.type === 'image' ? { ignoreText: true } : {};
+        Object.assign(record.item, findNearestSafeBoxPosition(record.item, record.item.id, getCustomItemMinimums(record.type), safetyOptions));
+        if (!isSafeCustomPosition(record.item, record.item.id, safetyOptions)) {
+          Object.assign(record.item, previousRect);
+        }
+        if (record.type === 'image') {
+          reflowTextBoxes(record.item.id);
+        } else {
+          Object.assign(record.item, findSafeTextPosition(record.item, getTextBlockers(record.item.id)));
+        }
+        renderCustomInspector();
+        applyAllCustomItemRects();
+      });
+
+      const finishItemDrag = (event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        const itemId = dragState.itemId;
+        const wasDragged = dragState.dragged;
+        const openedSurface = dragState.targetSurface;
+        const openedText = dragState.targetText;
+        dragState = null;
+        item.releasePointerCapture?.(event.pointerId);
+        if (wasDragged) return;
+        if (openedSurface) {
+          document.getElementById(`custom-image-${itemId}`)?.click();
+          return;
+        }
+        if (openedText) {
+          openedText.focus();
+          placeCaretAtEnd(openedText);
+        }
+      };
+
+      item.addEventListener('pointerup', finishItemDrag);
+      item.addEventListener('pointercancel', finishItemDrag);
+    });
+
+    customCanvas.querySelectorAll('[data-custom-remove]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const itemId = button.dataset.customRemove;
+        const record = itemId ? getCustomItemRecord(itemId) : null;
+        if (!record) return;
+        record.collection.splice(record.index, 1);
+        if (record.type === 'image') {
+          const state = customImageFiles[itemId];
+          if (state?.previewUrl) {
+            URL.revokeObjectURL(state.previewUrl);
+          }
+          delete customImageFiles[itemId];
+          reflowTextBoxes(itemId);
+        }
+        customLayoutState.selectedId = null;
+        renderCustomCanvas();
+      });
+    });
+
+    customCanvas.querySelectorAll('[data-custom-text]').forEach((element) => {
+      element.addEventListener('beforeinput', (event) => {
+        if (event.inputType === 'insertParagraph') {
+          insertPlainText(element, '\n');
+          event.preventDefault();
+        }
+      });
+      element.addEventListener('focus', () => {
+        const itemId = element.dataset.customText;
+        const record = itemId ? getCustomItemRecord(itemId) : null;
+        if (record?.type === 'text' && record.item.isDefaultText && record.item.text.trim().toLowerCase() === 'text') {
+          record.item.text = '';
+          record.item.isDefaultText = false;
+          element.textContent = '';
+        }
+        selectCustomItem(element.dataset.customText || '');
+      });
+      element.addEventListener('input', () => {
+        const itemId = element.dataset.customText;
+        const record = itemId ? getCustomItemRecord(itemId) : null;
+        if (!record) return;
+        record.item.text = element.innerText.replace(/\r/g, '');
+        record.item.isDefaultText = false;
+        const inspectorText = customInspector?.querySelector('[data-custom-control="text"]');
+        if (inspectorText && inspectorText !== document.activeElement) {
+          inspectorText.value = record.item.text;
+        }
+      });
+    });
+
+    customCanvas.querySelectorAll('input[id^="custom-image-"]').forEach((input) => {
+      input.addEventListener('change', async (event) => {
+        const boxId = input.id.replace('custom-image-', '');
+        const state = getCustomImageState(boxId);
+        const file = event.target.files?.[0] || null;
+        if (state.previewUrl) {
+          URL.revokeObjectURL(state.previewUrl);
+          state.previewUrl = '';
+        }
+        state.file = file;
+        state.position = { x: 0.5, y: 0.5 };
+        state.imageSize = file ? await loadImageSize(file) : null;
+        if (file) {
+          state.previewUrl = fileToPreviewUrl(file);
+        }
+        reflowTextBoxes(boxId);
+        renderCustomCanvas();
+      });
+    });
+
+    customCanvas.querySelectorAll('[data-custom-resize]').forEach((handle) => {
+      let dragState = null;
+
+      handle.addEventListener('pointerdown', (event) => {
+        const itemId = handle.dataset.customResize || '';
+        const record = getCustomItemRecord(itemId);
+        if (!record || !composeFrame) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectCustomItem(itemId);
+        const frameRect = composeFrame.getBoundingClientRect();
+        dragState = {
+          pointerId: event.pointerId,
+          itemId,
+          originX: record.item.x,
+          originY: record.item.y,
+          originWidth: record.item.width,
+          originHeight: record.item.height,
+          startX: event.clientX,
+          startY: event.clientY,
+          frameWidth: frameRect.width,
+          frameHeight: frameRect.height,
+          type: record.type,
+        };
+        handle.setPointerCapture?.(event.pointerId);
+      });
+
+      handle.addEventListener('pointermove', (event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        const record = getCustomItemRecord(dragState.itemId);
+        if (!record) return;
+        const minimums = getCustomItemMinimums(dragState.type);
+        const previousRect = {
+          x: record.item.x,
+          y: record.item.y,
+          width: record.item.width,
+          height: record.item.height,
+        };
+        record.item.width = dragState.originWidth + ((event.clientX - dragState.startX) / dragState.frameWidth);
+        record.item.height = dragState.originHeight + ((event.clientY - dragState.startY) / dragState.frameHeight);
+        Object.assign(record.item, clampCustomBoxRect(record.item, minimums));
+        const safetyOptions = record.type === 'image' ? { ignoreText: true } : {};
+        Object.assign(record.item, findNearestSafeBoxPosition(record.item, record.item.id, minimums, safetyOptions));
+        if (!isSafeCustomPosition(record.item, record.item.id, safetyOptions)) {
+          Object.assign(record.item, previousRect);
+        }
+        if (record.type === 'image') {
+          reflowTextBoxes(record.item.id);
+        }
+        renderCustomInspector();
+        applyAllCustomItemRects();
+      });
+
+      const finishDrag = (event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        dragState = null;
+        handle.releasePointerCapture?.(event.pointerId);
+      };
+
+      handle.addEventListener('pointerup', finishDrag);
+      handle.addEventListener('pointercancel', finishDrag);
+    });
   }
 
   function applyCustomLayout() {
@@ -1097,50 +2162,28 @@ function bindComposeEvents() {
       }
     });
 
+    if (customTemplateControls) {
+      customTemplateControls.hidden = !isCustomTemplate || composeStage !== 'edit';
+    }
+
     if (!isCustomTemplate) {
-      customLayoutState.resolved = null;
+      if (customCanvas) {
+        customCanvas.hidden = true;
+        customCanvas.innerHTML = '';
+      }
       return;
     }
 
-    customLayoutState.options = {
-      densityMode: form.querySelector('input[name="customDensityMode"]:checked')?.value || customLayoutState.options.densityMode,
-      recoveryMode: form.querySelector('input[name="customRecoveryMode"]:checked')?.value || customLayoutState.options.recoveryMode,
-    };
-
-    const previousResolved = customLayoutState.options.recoveryMode === 'keep' ? customLayoutState.resolved : null;
-    const resolved = computePage8ResolvedLayout({
-      ...customLayoutState.options,
+    customLayoutState.imageBoxes = normalizePage8ImageBoxes({
       imageBoxes: customLayoutState.imageBoxes,
-    }, previousResolved);
-    customLayoutState.resolved = resolved;
-
-    Object.entries(resolved.imageBoxes).forEach(([key, box]) => {
-      const slot = slotKeyMap[key];
-      if (!slot) return;
-      const rect = page8RectToPercent(box);
-      slot.style.left = rect.left;
-      slot.style.top = rect.top;
-      slot.style.width = rect.width;
-      slot.style.height = rect.height;
     });
-
-    Object.entries(resolved.textBlocks).forEach(([key, block]) => {
-      const target = editableKeyMap[key];
-      if (!target) return;
-      const rect = page8RectToPercent(block.rect);
-      target.style.left = rect.left;
-      target.style.top = rect.top;
-      target.style.width = rect.width;
-      target.style.height = rect.height;
-      target.style.fontSize = `${Math.max(11, block.fontSize / 1.6)}px`;
-      target.style.lineHeight = `${Math.max(1.25, block.lineHeight / Math.max(1, block.fontSize))}`;
-      target.style.textAlign = block.align;
-      target.style.right = 'auto';
-      target.style.bottom = 'auto';
-    });
+    customLayoutState.textBoxes = normalizePage8TextBoxes({
+      textBoxes: customLayoutState.textBoxes,
+    }, page8DraftValues);
+    renderCustomCanvas();
   }
 
-  form.querySelectorAll('input[name="backgroundColor"]').forEach((radio) => {
+  composeRoot.querySelectorAll('input[name="backgroundColor"]').forEach((radio) => {
     radio.addEventListener('change', () => {
       setPreviewBackground();
       focusSelectedColorCard(radio.value);
@@ -1148,18 +2191,18 @@ function bindComposeEvents() {
   });
   setPreviewBackground();
   window.setTimeout(() => {
-    focusSelectedColorCard(form.querySelector('input[name="backgroundColor"]:checked')?.value);
+    focusSelectedColorCard(composeRoot.querySelector('input[name="backgroundColor"]:checked')?.value);
   }, 0);
 
-  form.querySelectorAll('input[name="templateId"]').forEach((radio) => {
+  composeRoot.querySelectorAll('input[name="templateId"]').forEach((radio) => {
     radio.addEventListener('change', () => {
       setPreviewTemplate(radio.value);
       focusSelectedTemplateCard(radio.value);
     });
   });
-  setPreviewTemplate(uiState.composeTemplateId || form.querySelector('input[name="templateId"]:checked')?.value);
+  setPreviewTemplate(uiState.composeTemplateId || composeRoot.querySelector('input[name="templateId"]:checked')?.value);
   window.setTimeout(() => {
-    focusSelectedTemplateCard(uiState.composeTemplateId || form.querySelector('input[name="templateId"]:checked')?.value);
+    focusSelectedTemplateCard(uiState.composeTemplateId || composeRoot.querySelector('input[name="templateId"]:checked')?.value);
   }, 0);
 
   document.querySelectorAll('[data-template-carousel-nav]').forEach((button) => {
@@ -1186,6 +2229,20 @@ function bindComposeEvents() {
     });
   });
 
+  document.querySelectorAll('[data-compose-stage-nav]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextStage = button.dataset.composeStageNav;
+      if (!nextStage) return;
+      switchComposeStage(nextStage);
+    });
+  });
+
+  if (composeStage === 'select') {
+    return;
+  }
+
+  if (!form) return;
+
   if (tagToggle && tagPanel) {
     tagToggle.addEventListener('click', () => {
       const nextHidden = !tagPanel.hidden;
@@ -1203,9 +2260,53 @@ function bindComposeEvents() {
 
   setPreviewMode(false);
 
-  form.querySelectorAll('input[name="customDensityMode"], input[name="customRecoveryMode"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      applyCustomLayout();
+  composeRoot.querySelectorAll('[data-custom-add]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      const action = button.dataset.customAdd;
+      if (composeSheet?.dataset.template !== 'page8') return;
+      if (action === 'image') {
+        const nextImage = {
+          id: createCustomId('image'),
+          x: 0.14,
+          y: 0.18,
+          width: 0.28,
+          height: 0.22,
+        };
+        customLayoutState.imageBoxes = [
+          ...customLayoutState.imageBoxes,
+          clampCustomBoxRect(nextImage, PAGE8_MIN_IMAGE_SIZE),
+        ];
+        customLayoutState.selectedId = nextImage.id;
+        getCustomImageState(nextImage.id);
+        reflowTextBoxes(nextImage.id);
+        renderCustomCanvas();
+        return;
+      }
+
+      const nextText = findSafeTextPosition({
+        id: createCustomId('text'),
+        text: 'text',
+        isDefaultText: true,
+        x: 0.18,
+        y: 0.2,
+        width: 0.28,
+        height: 0.12,
+        fontSize: 0.028,
+        lineHeight: 1.35,
+        align: 'left',
+        family: 'sans',
+        weight: 500,
+      }, [
+        ...customLayoutState.imageBoxes.map((item) => getCustomRect(item)),
+        ...customLayoutState.textBoxes.map((item) => getCustomRect(item)),
+      ]);
+      customLayoutState.textBoxes = [
+        ...customLayoutState.textBoxes,
+        clampCustomBoxRect(nextText, PAGE8_MIN_TEXT_SIZE),
+      ];
+      customLayoutState.selectedId = nextText.id;
+      renderCustomCanvas();
     });
   });
 
@@ -1256,6 +2357,8 @@ function bindComposeEvents() {
         if (composeSheet?.dataset.template === 'page8') {
           const boxState = customLayoutState.imageBoxes[stateKey];
           if (!boxState || !composeFrame) return;
+          event.preventDefault();
+          event.stopPropagation();
           const frameRect = composeFrame.getBoundingClientRect();
           dragState = {
             pointerId: event.pointerId,
@@ -1272,6 +2375,8 @@ function bindComposeEvents() {
           return;
         }
         if (!selectedFiles[stateKey].file) return;
+        event.preventDefault();
+        event.stopPropagation();
         dragState = {
           pointerId: event.pointerId,
           mode: 'pan-image',
@@ -1286,6 +2391,7 @@ function bindComposeEvents() {
 
       slot.addEventListener('pointermove', (event) => {
         if (!dragState || dragState.pointerId !== event.pointerId) return;
+        event.preventDefault();
         if (dragState.mode === 'move-box') {
           const nextX = dragState.originX + ((event.clientX - dragState.startX) / dragState.frameWidth);
           const nextY = dragState.originY + ((event.clientY - dragState.startY) / dragState.frameHeight);
@@ -1394,42 +2500,66 @@ function bindComposeEvents() {
       .split(',')
       .map((tag) => tag.trim())
       .filter(Boolean);
+    const isCustomTemplate = composeSheet?.dataset.template === 'page8';
+    const normalizedCustomLayout = isCustomTemplate
+      ? computePage8ResolvedLayout({
+        ...customLayoutState.options,
+        imageBoxes: customLayoutState.imageBoxes,
+        textBoxes: customLayoutState.textBoxes.map((box) => ({
+          ...box,
+          text: String(box.text || '').replace(/\r/g, ''),
+        })),
+      }, page8DraftValues)
+      : null;
 
     const values = {
       templateId: String(formData.get('templateId') || uiState.composeTemplateId || DEFAULT_COMPOSE_TEMPLATE),
-      backgroundColor: String(formData.get('backgroundColor') || '#f8f4ee'),
+      backgroundColor: String(formData.get('backgroundColor') || uiState.composeBackgroundColor || '#f8f4ee'),
       headline: getEditableValue('headline'),
       subhead: getEditableValue('subhead'),
       intro: getEditableValue('intro'),
       body: getEditableValue('body'),
       date: getEditableValue('date'),
       editor: getEditableValue('editor'),
-      customLayout: composeSheet?.dataset.template === 'page8'
-        ? {
-          ...customLayoutState.options,
-          imageBoxes: customLayoutState.imageBoxes,
-        }
-        : null,
+      customLayout: normalizedCustomLayout,
     };
 
-    const imageData = await renderComposeTemplate(values, selectedFiles);
+    const page8Files = normalizedCustomLayout
+      ? Object.fromEntries(normalizedCustomLayout.imageBoxes.map((box) => [box.id, getCustomImageState(box.id)]))
+      : {};
+    const imageData = await renderComposeTemplate(values, selectedFiles, { page8Files });
     const profileName = String(getState().profile?.name || 'you').trim() || 'you';
 
-    addPost({
-      authorName: profileName,
-      caption: buildComposeCaption(values),
-      imageData,
-      fixedTags,
-      freeTags,
-      composeData: {
-        ...values,
+    if (uiState.composeEditingPostId) {
+      updatePost(uiState.composeEditingPostId, {
+        caption: buildComposeCaption(values),
+        imageData,
         fixedTags,
         freeTags,
-      },
-    });
+        composeData: {
+          ...values,
+          fixedTags,
+          freeTags,
+        },
+      });
+    } else {
+      addPost({
+        authorName: profileName,
+        caption: buildComposeCaption(values),
+        imageData,
+        fixedTags,
+        freeTags,
+        composeData: {
+          ...values,
+          fixedTags,
+          freeTags,
+        },
+      });
+    }
 
     uiState.screen = 'timeline';
     uiState.timelineTab = 'recommended';
+    uiState.composeStage = 'edit';
     render();
   });
 }
@@ -1677,7 +2807,11 @@ function bindModalEvents() {
 }
 
 function bindPageEvents() {
+  bindScreenNavigationEvents();
   switch (uiState.screen) {
+    case 'home':
+      bindHomeEvents();
+      break;
     case 'timeline':
       bindTimelineEvents();
       break;

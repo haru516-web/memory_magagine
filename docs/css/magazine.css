@@ -4,18 +4,20 @@
 }
 
 .issue-post-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  column-count: 2;
+  column-gap: 0;
 }
 
 .issue-post-option {
   display: grid;
   gap: 8px;
   padding: 8px;
+  width: 100%;
+  margin-bottom: 10px;
+  break-inside: avoid;
   border-radius: 18px;
-  border: 1px solid rgba(233, 217, 207, 0.95);
-  background: rgba(255, 253, 249, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .issue-post-option input {
@@ -45,7 +47,7 @@
 }
 
 .issue-post-option input:checked + img {
-  outline: 3px solid rgba(214, 140, 147, 0.7);
+  outline: 3px solid rgba(81, 198, 255, 0.7);
 }
 
 .issue-list {
@@ -58,20 +60,20 @@
   gap: 8px;
   padding: 18px;
   border-radius: 24px;
-  border: 1px solid rgba(233, 217, 207, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: var(--shadow);
 }
 
 .issue-card--soft {
-  background: linear-gradient(180deg, #fff6f2, #fdecee);
+  background: linear-gradient(180deg, rgba(13, 18, 26, 0.96), rgba(11, 15, 22, 0.92));
 }
 
 .issue-card--cream {
-  background: linear-gradient(180deg, #fffaf2, #f7efe3);
+  background: linear-gradient(180deg, rgba(13, 19, 24, 0.96), rgba(10, 14, 19, 0.92));
 }
 
 .issue-card--rose {
-  background: linear-gradient(180deg, #fff4f6, #f6dfe3);
+  background: linear-gradient(180deg, rgba(15, 17, 28, 0.96), rgba(10, 13, 20, 0.92));
 }
 
 .issue-card__eyebrow {

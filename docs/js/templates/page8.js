@@ -8,8 +8,6 @@ export const page8Template = {
     const {
       addWrappedText,
       drawFileCover,
-      drawSlotPlaceholder,
-      defaults,
     } = helpers;
 
     const frame = {
@@ -19,46 +17,38 @@ export const page8Template = {
       height: 1754 - 168,
     };
 
-    const resolved = computePage8ResolvedLayout(values.customLayout || {});
+    const resolved = computePage8ResolvedLayout(values.customLayout || {}, values);
 
     ctx.fillStyle = '#191514';
     ctx.textBaseline = 'top';
 
-    const fileMap = {
-      primary: files.primary,
-      secondary: files.secondary,
-      accent: files.accent,
-    };
+    const fileMap = helpers.page8Files || {};
 
-    for (const [key, box] of Object.entries(resolved.imageBoxes)) {
+    for (const box of resolved.imageBoxes) {
       const slotRect = mapPage8RectToFrame(frame, box);
-      if (fileMap[key]?.file) {
-        await drawFileCover(ctx, fileMap[key].file, slotRect, fileMap[key].position);
-      } else {
-        drawSlotPlaceholder(ctx, slotRect);
+      if (fileMap[box.id]?.file) {
+        await drawFileCover(ctx, fileMap[box.id].file, slotRect, fileMap[box.id].position);
       }
     }
 
-    const textValues = {
-      headline: values.headline || defaults.headline,
-      subhead: values.subhead || defaults.subhead,
-      intro: values.intro || defaults.intro,
-      body: values.body || defaults.body,
-      date: values.date || defaults.date,
-      editor: values.editor || defaults.editor,
-    };
-
-    Object.entries(resolved.textBlocks).forEach(([key, block]) => {
-      const rect = mapPage8RectToFrame(frame, block.rect);
-      ctx.textAlign = block.align;
-      ctx.font = `${key === 'headline' ? '600' : '500'} ${Math.round(block.fontSize)}px ${key === 'headline' ? '"Cormorant Garamond", "Times New Roman", serif' : '"Noto Sans JP", sans-serif'}`;
-      const startX = block.align === 'right' ? rect.x + rect.width : rect.x;
-      addWrappedText(ctx, textValues[key], {
+    resolved.textBoxes.forEach((box) => {
+      const rect = mapPage8RectToFrame(frame, box);
+      const fontFamily = box.family === 'serif'
+        ? '"Cormorant Garamond", "Times New Roman", serif'
+        : '"Noto Sans JP", sans-serif';
+      ctx.textAlign = box.align;
+      ctx.font = `${box.weight} ${Math.round(frame.width * box.fontSize)}px ${fontFamily}`;
+      const startX = box.align === 'right'
+        ? rect.x + rect.width
+        : box.align === 'center'
+          ? rect.x + (rect.width / 2)
+          : rect.x;
+      addWrappedText(ctx, box.text || '', {
         x: startX,
         y: rect.y,
         maxWidth: rect.width,
-        lineHeight: block.lineHeight,
-        maxLines: block.maxLines,
+        lineHeight: frame.width * box.fontSize * box.lineHeight,
+        maxLines: Math.max(1, Math.floor(rect.height / Math.max(12, frame.width * box.fontSize * box.lineHeight))),
       });
     });
   },
