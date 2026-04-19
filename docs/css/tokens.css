@@ -71,3 +71,13 @@
     radial-gradient(circle at 55% 74%, rgba(77, 255, 210, 0.08), transparent 18%),
     linear-gradient(180deg, #050608 0%, #070b12 100%);
 }
+
+.app-shell--theme-mode-system {
+  --line-strong: rgba(104, 228, 255, 0.42);
+  --pink-strong: #67e8ff;
+  --shadow: 0 20px 44px rgba(0, 18, 42, 0.22);
+  --control-accent-bg: linear-gradient(180deg, rgba(82, 223, 255, 0.24), rgba(66, 144, 255, 0.18));
+  --control-accent-solid: rgba(82, 223, 255, 0.16);
+  --control-accent-border: rgba(103, 232, 255, 0.5);
+  --control-accent-text: var(--text);
+}

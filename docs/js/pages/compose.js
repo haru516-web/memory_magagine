@@ -199,10 +199,30 @@ function renderTagPanel(selectedFixedTags, freeTagsValue) {
   `;
 }
 
+function renderTagsStagePanel(selectedFixedTags, freeTagsValue) {
+  return `
+    <section class="compose-group compose-group--tags-stage">
+      <div class="compose-group__head">
+        <h3>Tags</h3>
+      </div>
+      ${Object.entries(TAG_GROUPS).map(([groupKey, options]) => renderGroup(groupKey, options, selectedFixedTags)).join('')}
+      <section class="compose-group compose-group--tags compose-group--tags-nested">
+        <div class="compose-group__head">
+          <h3>Free Tags</h3>
+        </div>
+        <label class="field">
+          <input class="field__input" type="text" name="freeTags" placeholder="cafe, spring, film" value="${freeTagsValue}" />
+        </label>
+      </section>
+    </section>
+  `;
+}
+
 function renderSelectionScreen({ values, selectedId, selectedBackground, headerMini, headerTitle }) {
   return `
     <section class="page page--compose page--compose--select" data-compose-stage="select">
-      <header class="page-header page-header--compose">
+      <header class="page-header page-header--with-back page-header--compose">
+        <button class="button button--ghost page-back" type="button" data-close-compose>Back</button>
         <div>
           <p class="page-header__mini">${headerMini}</p>
           <h2 class="page-header__title">${headerTitle}</h2>
@@ -218,7 +238,7 @@ function renderSelectionScreen({ values, selectedId, selectedBackground, headerM
           <div class="compose-group__head compose-group__head--template compose-group__head--template-select">
             <h3>Template</h3>
             ${renderColorPicker(selectedBackground)}
-            <button class="button button--primary compose-confirm-button" type="button" data-compose-stage-nav="edit">決定</button>
+            <button class="button button--primary compose-confirm-button" type="button" data-compose-stage-nav="edit">編集する</button>
           </div>
           ${renderTemplatePicker(selectedId)}
         </section>
@@ -227,11 +247,11 @@ function renderSelectionScreen({ values, selectedId, selectedBackground, headerM
   `;
 }
 
-function renderEditorScreen({ values, selectedId, selectedBackground, selectedFixedTags, freeTagsValue, submitLabel, headerMini, headerTitle }) {
+function renderEditorScreen({ values, selectedId, selectedBackground, isEditing, headerMini, headerTitle }) {
   return `
     <section class="page page--compose page--compose--edit" data-compose-stage="edit">
       <header class="page-header page-header--with-back page-header--compose">
-        <button class="button button--ghost page-back" type="button" data-close-compose>Back</button>
+        <button class="button button--ghost page-back" type="button" data-compose-stage-nav="select">Back</button>
         <div>
           <p class="page-header__mini">${headerMini}</p>
           <h2 class="page-header__title">${headerTitle}</h2>
@@ -239,30 +259,64 @@ function renderEditorScreen({ values, selectedId, selectedBackground, selectedFi
       </header>
 
       <form class="compose-form compose-form--edit" id="composeForm">
-        <section class="compose-editor">
-          <section class="compose-preview compose-preview--editor">
-            ${renderComposeSheet(values, selectedId, selectedBackground, { editable: true, interactiveSlots: true })}
+        <section class="compose-editor compose-editor--focus ${selectedId === 'page8' ? 'compose-editor--page8' : ''}">
+          <section class="compose-preview compose-preview--editor ${selectedId === 'page8' ? 'compose-preview--page8' : ''}">
+            ${selectedId === 'page8'
+              ? `
+                <div class="compose-pretext-host-shell compose-pretext-host-shell--page8">
+                  <div class="compose-pretext-host" data-compose-pretext-host></div>
+                </div>
+              `
+              : renderComposeSheet(values, selectedId, selectedBackground, { editable: true, interactiveSlots: true })}
           </section>
-
-          <aside class="compose-editor-actions">
-            <section class="compose-group compose-group--template">
-              <div class="compose-group__head compose-group__head--template">
-                <h3>Template</h3>
-                ${renderColorPicker(selectedBackground)}
-              </div>
-              ${renderTemplatePicker(selectedId)}
-            </section>
-            <section class="compose-custom-tools" data-custom-template-controls hidden>
-              <div class="compose-custom-tools__buttons">
-                <button class="button button--ghost" type="button" data-custom-add="image">画像追加</button>
-                <button class="button button--ghost" type="button" data-custom-add="text">文字追加</button>
-              </div>
-              <section class="compose-custom-inspector" data-custom-inspector></section>
-            </section>
-            ${renderTagPanel(selectedFixedTags, freeTagsValue)}
-            <button class="button button--primary compose-submit-button" type="submit">${submitLabel}</button>
-          </aside>
         </section>
+        <div class="compose-flow-actions">
+          <button class="button button--ghost compose-stage-back" type="button" data-compose-stage-nav="select">Template</button>
+          <button class="button button--primary compose-submit-button ${selectedId === 'page8' ? 'compose-submit-button--page8' : ''}" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'タグへ進む'}</button>
+        </div>
+        <section class="compose-custom-tools" data-custom-template-controls hidden ${selectedId === 'page8' ? 'style="display:none"' : ''}>
+          <div class="compose-custom-tools__header">
+            <p class="compose-custom-tools__eyebrow">Pretext-inspired editorial controls</p>
+            <h3 class="compose-custom-tools__title">Custom Layout</h3>
+            <p class="compose-custom-tools__hint">画像はフレーム移動とクロップを切替、文字はタイトル/本文プリセットと行間・余白を調整できます。</p>
+          </div>
+          <div class="compose-custom-tools__buttons">
+            <button class="button button--ghost" type="button" data-custom-add="image">画像追加</button>
+            <button class="button button--ghost" type="button" data-custom-add="text">文字追加</button>
+          </div>
+          <section class="compose-custom-inspector" data-custom-inspector></section>
+        </section>
+      </form>
+    </section>
+  `;
+}
+
+function renderTagScreen({ selectedId, selectedBackground, selectedFixedTags, freeTagsValue, submitLabel, isEditing, headerMini, headerTitle }) {
+  return `
+    <section class="page page--compose page--compose--tags" data-compose-stage="tags">
+      <header class="page-header page-header--with-back page-header--compose">
+        <button class="button button--ghost page-back" type="button" data-compose-stage-nav="edit">Back</button>
+        <div>
+          <p class="page-header__mini">${headerMini}</p>
+          <h2 class="page-header__title">${headerTitle}</h2>
+        </div>
+      </header>
+
+      <form class="compose-form compose-form--tags" id="composeForm">
+        <section class="compose-tag-stage">
+          <section class="compose-group compose-group--template compose-group--template-summary">
+            <div class="compose-group__head compose-group__head--template">
+              <h3>Template</h3>
+              ${renderColorPicker(selectedBackground)}
+            </div>
+            ${renderTemplatePicker(selectedId)}
+          </section>
+          ${renderTagsStagePanel(selectedFixedTags, freeTagsValue)}
+        </section>
+        <div class="compose-flow-actions">
+          <button class="button button--ghost compose-stage-back" type="button" data-compose-stage-nav="edit">Edit</button>
+          <button class="button button--primary compose-submit-button" type="submit">${submitLabel}</button>
+        </div>
       </form>
     </section>
   `;
@@ -288,13 +342,36 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
   const submitLabel = options.isEditing ? 'Update Post' : 'Post This Layout';
   const headerMini = options.isEditing ? 'post editor' : 'template editor';
   const headerTitle = options.isEditing ? 'Edit Post' : 'Compose';
+  const stage = options.stage || 'select';
+
+  if (stage === 'select') {
+    return renderSelectionScreen({
+      values,
+      selectedId,
+      selectedBackground,
+      headerMini,
+      headerTitle,
+    });
+  }
+
+  if (stage === 'tags') {
+    return renderTagScreen({
+      selectedId,
+      selectedBackground,
+      selectedFixedTags,
+      freeTagsValue,
+      submitLabel,
+      isEditing: Boolean(options.isEditing),
+      headerMini,
+      headerTitle,
+    });
+  }
+
   return renderEditorScreen({
     values,
     selectedId,
     selectedBackground,
-    selectedFixedTags,
-    freeTagsValue,
-    submitLabel,
+    isEditing: Boolean(options.isEditing),
     headerMini,
     headerTitle,
   });

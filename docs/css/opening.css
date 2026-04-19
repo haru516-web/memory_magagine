@@ -1,13 +1,13 @@
 .opening-screen {
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 24px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top, rgba(255,255,255,0.85), transparent 32%),
-    radial-gradient(circle at 78% 16%, rgba(244, 213, 217, 0.44), transparent 22%),
-    linear-gradient(180deg, #fffaf6 0%, #f6e9df 100%);
+  isolation: isolate;
+  color: #f5f7fb;
+  background: transparent;
 }
 
 .opening-screen__inner {
@@ -27,27 +27,12 @@
   box-shadow: none;
 }
 
-.opening-screen__mark {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: clamp(260px, 32vw, 360px);
-  height: auto;
-  transform: translate(-50%, -50%);
-  display: block;
-  object-fit: contain;
-  z-index: 1;
-  opacity: 0.18;
-  filter: drop-shadow(0 20px 42px rgba(118, 86, 70, 0.1));
-  pointer-events: none;
-}
-
 .opening-screen__canvas {
   position: relative;
   width: 100%;
   height: 100%;
   display: block;
-  z-index: 2;
+  z-index: 1;
 }
 
 .opening-screen__noise,
@@ -65,13 +50,13 @@
     radial-gradient(circle at 66% 12%, rgba(255, 255, 255, 0.5) 0 0.9px, transparent 1.1px),
     radial-gradient(circle at 82% 66%, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.2px),
     radial-gradient(circle at 92% 34%, rgba(255, 255, 255, 0.48) 0 0.9px, transparent 1.1px);
-  opacity: 0.42;
+  opacity: 0.58;
 }
 
 .opening-screen__glow {
   border-radius: 999px;
   filter: blur(56px);
-  opacity: 0.3;
+  opacity: 0.34;
 }
 
 .opening-screen__glow--a {
@@ -99,7 +84,4 @@
 }
 
 @media (max-width: 720px) {
-  .opening-screen__mark {
-    width: min(66vw, 280px);
-  }
 }

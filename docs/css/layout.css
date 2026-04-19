@@ -16,12 +16,58 @@
   overflow-y: hidden;
 }
 
+.app-shell::before,
+.app-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.app-shell::before {
+  z-index: 0;
+}
+
+.app-shell::after {
+  z-index: 0;
+}
+
+.app-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
 .app-shell--timeline {
   box-shadow: none;
 }
 
 .app-shell--home {
   background: var(--shell-bg);
+}
+
+.app-shell--theme-mode-system {
+  background:
+    linear-gradient(180deg, rgba(3, 14, 30, 0.98), rgba(5, 20, 42, 0.98)),
+    var(--shell-bg);
+}
+
+.app-shell--theme-mode-system::before {
+  background:
+    linear-gradient(90deg, rgba(125, 238, 255, 0.1) 0, rgba(125, 238, 255, 0.1) 1px, transparent 1px, transparent 10%),
+    linear-gradient(180deg, rgba(136, 243, 255, 0.05) 0, rgba(136, 243, 255, 0.05) 1px, transparent 1px, transparent 16%),
+    radial-gradient(circle at 72% 18%, rgba(107, 224, 255, 0.1), transparent 22%);
+  mix-blend-mode: screen;
+  opacity: 0.52;
+}
+
+.app-shell--theme-mode-system::after {
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0, rgba(255, 255, 255, 0.04) 1px, transparent 1px, transparent 4px),
+    linear-gradient(90deg, transparent 0, transparent 76%, rgba(118, 235, 255, 0.18) 76.4%, rgba(118, 235, 255, 0.02) 78%, transparent 82%);
+  mix-blend-mode: screen;
+  opacity: 0.3;
 }
 
 .screen-area {

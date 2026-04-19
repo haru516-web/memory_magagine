@@ -2,6 +2,28 @@ import { renderAvatarContent } from '../components/avatar.js';
 import { getIcon } from '../components/icons.js';
 import { sortRecommended } from '../utils/filter.js';
 
+function resolveHomeTheme(mode) {
+  if (mode === 'system') {
+    const prefersDark = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return prefersDark ? 'dark' : 'light';
+  }
+  return mode === 'dark' ? 'dark' : 'light';
+}
+
+function getThemeLabel(mode) {
+  if (mode === 'system') return 'System';
+  return mode === 'dark' ? 'Dark' : 'White';
+}
+
+function getThemeMeta(mode, resolvedTheme) {
+  if (mode === 'system') {
+    return `OS ${resolvedTheme === 'dark' ? 'Dark' : 'White'}`;
+  }
+  return 'Tap to switch';
+}
+
 function getTimelinePosts(state, activeTab) {
   const posts = state.posts || [];
   if (activeTab === 'following') {
@@ -95,16 +117,18 @@ function renderTimelineField(posts) {
 }
 
 export function renderHome(state, uiState) {
-  const homeTheme = uiState?.homeTheme === 'dark' ? 'dark' : 'light';
+  const homeThemeMode = uiState?.homeTheme || 'dark';
+  const homeTheme = resolveHomeTheme(homeThemeMode);
   const homeCoreState = uiState?.homeCoreState || 'default';
-  const toggleLabel = homeTheme === 'dark' ? 'White' : 'Dark';
+  const toggleLabel = getThemeLabel(homeThemeMode);
+  const toggleMeta = getThemeMeta(homeThemeMode, homeTheme);
 
   return `
-    <section class="page orbit-home orbit-home--${homeTheme} orbit-home--${homeCoreState}">
+    <section class="page orbit-home orbit-home--${homeTheme} orbit-home--mode-${homeThemeMode} orbit-home--${homeCoreState}">
       <div class="orbit-stage">
-        <button class="orbit-node orbit-node--theme" type="button" data-home-theme-toggle aria-label="Switch main page theme">
-          <span class="orbit-node__icon" aria-hidden="true">${getIcon('spark')}</span>
+        <button class="orbit-node orbit-node--theme orbit-node--theme-mode-${homeThemeMode}" type="button" data-home-theme-toggle aria-label="Switch main page theme">
           <strong class="orbit-node__title">${toggleLabel}</strong>
+          <span class="orbit-node__meta">${toggleMeta}</span>
         </button>
         <div class="orbit-stage__noise" aria-hidden="true"></div>
         <div class="orbit-stage__glow orbit-stage__glow--a" aria-hidden="true"></div>
@@ -133,7 +157,7 @@ export function renderHome(state, uiState) {
 
         <button class="orbit-core orbit-core--button" type="button" data-home-core-toggle aria-label="Reveal hidden home mark">
           <span class="orbit-core__surface">
-            <img class="orbit-core__mark" src="image/icon/velna_toka.png" alt="" />
+            <img class="orbit-core__mark" src="image/icon/icon_toka.png" alt="" />
           </span>
         </button>
 

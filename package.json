@@ -1,0 +1,11 @@
+{
+  "name": "memories-vite-shell",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ./docs/references/pretext-magazine-editor/node_modules/vite/bin/vite.js",
+    "build": "node ./docs/references/pretext-magazine-editor/node_modules/vite/bin/vite.js build",
+    "build:dist": "node ./docs/references/pretext-magazine-editor/node_modules/vite/bin/vite.js build --outDir dist --emptyOutDir",
+    "preview": "node ./docs/references/pretext-magazine-editor/node_modules/vite/bin/vite.js preview"
+  }
+}

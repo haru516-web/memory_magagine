@@ -1,15 +1,17 @@
 html {
   overflow: hidden;
   scrollbar-gutter: stable;
+  background: #050608;
 }
 
 body {
   font-family: 'Noto Sans JP', sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(255,255,255,0.85), transparent 35%),
-    radial-gradient(circle at 78% 14%, rgba(244, 213, 217, 0.52), transparent 22%),
-    linear-gradient(180deg, #fffaf6 0%, #fff4ec 100%);
+    radial-gradient(circle at 18% 18%, rgba(32, 126, 255, 0.12), transparent 18%),
+    radial-gradient(circle at 78% 20%, rgba(141, 74, 255, 0.12), transparent 20%),
+    radial-gradient(circle at 55% 74%, rgba(77, 255, 210, 0.08), transparent 18%),
+    linear-gradient(180deg, #050608 0%, #070b12 100%);
   min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;

@@ -22,7 +22,7 @@ import {
   PAGE8_MIN_TEXT_SIZE,
   snapPage8Value,
 } from './templates/page8Layout.js';
-import { cropFileToCirclePngDataUrl, fileToPreviewUrl } from './utils/image.js';
+import { cropFileToCirclePngDataUrl, fileToWebpDataUrl } from './utils/image.js';
 
 const uiState = {
   screen: 'opening',
@@ -31,7 +31,7 @@ const uiState = {
   timelinePan: { x: -360, y: -220 },
   searchQuery: '',
   searchTags: [],
-  homeTheme: 'light',
+  homeTheme: 'dark',
   homeCoreState: 'default',
   homeCoreTapTimestamps: [],
   previewPostId: null,
@@ -48,12 +48,15 @@ const uiState = {
   composeTemplateId: DEFAULT_COMPOSE_TEMPLATE,
   composeBackgroundColor: '#f8f4ee',
   composeEditingPostId: null,
+  composeWorkingDraft: null,
   openingTapGuardUntil: 0,
   postReturnScreen: 'timeline',
   postReturnProfileAuthor: null,
   profileReturnState: null,
   composeReturnState: null,
 };
+
+const HOME_THEME_ORDER = ['dark', 'light', 'system'];
 
 const composePreviewDefaults = {
   headline: 'text',
@@ -64,9 +67,51 @@ const composePreviewDefaults = {
   editor: '編集者：haru',
 };
 
-const app = document.getElementById('app');
+function createComposeFileState(source = {}) {
+  return {
+    file: typeof source.file === 'string' ? source.file : null,
+    position: {
+      x: Number(source.position?.x) || 0.5,
+      y: Number(source.position?.y) || 0.5,
+      zoom: Math.max(1, Number(source.position?.zoom) || 1),
+    },
+    imageSize: source.imageSize && Number.isFinite(source.imageSize.width) && Number.isFinite(source.imageSize.height)
+      ? { width: source.imageSize.width, height: source.imageSize.height }
+      : null,
+  };
+}
+
+function createComposeWorkingDraft(source = {}) {
+  return {
+    templateId: source.templateId || DEFAULT_COMPOSE_TEMPLATE,
+    backgroundColor: source.backgroundColor || '#f8f4ee',
+    headline: source.headline || composePreviewDefaults.headline,
+    subhead: source.subhead || composePreviewDefaults.subhead,
+    intro: source.intro || composePreviewDefaults.intro,
+    body: source.body || composePreviewDefaults.body,
+    date: source.date || composePreviewDefaults.date,
+    editor: source.editor || composePreviewDefaults.editor,
+    fixedTags: Array.isArray(source.fixedTags) ? [...source.fixedTags] : [],
+    freeTags: Array.isArray(source.freeTags)
+      ? [...source.freeTags]
+      : String(source.freeTags || '')
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    customLayout: source.customLayout ? JSON.parse(JSON.stringify(source.customLayout)) : null,
+    standardFiles: {
+      primary: createComposeFileState(source.standardFiles?.primary),
+      secondary: createComposeFileState(source.standardFiles?.secondary),
+      accent: createComposeFileState(source.standardFiles?.accent),
+    },
+  };
+}
+
+let app = null;
 let openingSequenceId = 0;
 let homeCoreTransitionTimer = null;
+let activeComposeBridge = null;
+let systemThemeMediaQuery = null;
 const profileAvatarDraft = {
   file: null,
   previewUrl: '',
@@ -98,6 +143,23 @@ function resetProfileAvatarDraft() {
   uiState.profileAvatarCropOpen = false;
 }
 
+function cleanupComposeBridge() {
+  if (activeComposeBridge?.unmount) {
+    activeComposeBridge.unmount();
+  }
+  activeComposeBridge = null;
+}
+
+function resolveHomeTheme(mode = uiState.homeTheme) {
+  if (mode === 'system') {
+    const prefersDark = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return prefersDark ? 'dark' : 'light';
+  }
+  return mode === 'dark' ? 'dark' : 'light';
+}
+
 function getPageHtml() {
   const state = getState();
   switch (uiState.screen) {
@@ -112,7 +174,7 @@ function getPageHtml() {
         stage: uiState.composeStage,
         selectedTemplateId: uiState.composeTemplateId,
         selectedBackground: uiState.composeBackgroundColor,
-        draft: getActivePost(uiState.composeEditingPostId)?.composeData || null,
+        draft: uiState.composeWorkingDraft || getActivePost(uiState.composeEditingPostId)?.composeData || null,
         isEditing: Boolean(uiState.composeEditingPostId),
       });
     case 'magazine':
@@ -136,11 +198,13 @@ function isOwnPost(post) {
 }
 
 function renderShell() {
+  if (!app) return;
   const shellClasses = ['app-shell'];
   const screenAreaClasses = ['screen-area'];
-  const themeName = uiState.homeTheme === 'dark' ? 'dark' : 'light';
+  const themeName = resolveHomeTheme(uiState.homeTheme);
 
   shellClasses.push(`app-shell--theme-${themeName}`);
+  shellClasses.push(`app-shell--theme-mode-${uiState.homeTheme}`);
 
   if (uiState.screen === 'home') {
     shellClasses.push('app-shell--home');
@@ -148,6 +212,9 @@ function renderShell() {
   } else if (uiState.screen === 'timeline') {
     shellClasses.push('app-shell--timeline');
     screenAreaClasses.push('screen-area--timeline');
+  } else if (uiState.screen === 'compose') {
+    shellClasses.push('app-shell--compose');
+    screenAreaClasses.push('screen-area--compose');
   } else if (uiState.screen === 'search') {
     screenAreaClasses.push('screen-area--search');
   }
@@ -180,6 +247,8 @@ function renderScreen() {
 }
 
 function render() {
+  if (!app) return;
+  cleanupComposeBridge();
   if (uiState.screen === 'opening') {
     app.innerHTML = renderOpening();
     bindOpeningEvents();
@@ -234,16 +303,22 @@ function navigate(screen) {
   }
   if (screen !== 'compose') {
     uiState.composeEditingPostId = null;
-    uiState.composeStage = 'edit';
+    uiState.composeStage = 'select';
     uiState.composeBackgroundColor = '#f8f4ee';
+    uiState.composeWorkingDraft = null;
     uiState.composeReturnState = null;
   }
   uiState.screen = screen;
   uiState.previewPostId = null;
   uiState.commentPostId = null;
   if (screen === 'compose') {
-    uiState.composeStage = 'edit';
+    uiState.composeStage = 'select';
     uiState.composeBackgroundColor = '#f8f4ee';
+    uiState.composeTemplateId = DEFAULT_COMPOSE_TEMPLATE;
+    uiState.composeWorkingDraft = createComposeWorkingDraft({
+      templateId: DEFAULT_COMPOSE_TEMPLATE,
+      backgroundColor: '#f8f4ee',
+    });
   }
   if (screen === 'profile') {
     resetProfileAvatarDraft();
@@ -308,6 +383,7 @@ function openPostEdit(postId) {
   uiState.composeStage = 'edit';
   uiState.composeTemplateId = post.composeData?.templateId || DEFAULT_COMPOSE_TEMPLATE;
   uiState.composeBackgroundColor = post.composeData?.backgroundColor || '#f8f4ee';
+  uiState.composeWorkingDraft = createComposeWorkingDraft(post.composeData || {});
   uiState.screen = 'compose';
   uiState.previewPostId = null;
   uiState.commentPostId = null;
@@ -317,6 +393,7 @@ function openPostEdit(postId) {
 function closeCompose() {
   const snapshot = uiState.composeReturnState;
   uiState.composeReturnState = null;
+  uiState.composeWorkingDraft = null;
   restoreViewState(snapshot, 'home');
 }
 
@@ -370,10 +447,10 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   canvas.width = width;
   canvas.height = height;
 
-  const textColor = '#171311';
+  const textColor = '#ffffff';
   const serifFont = '"Zen Old Mincho", "Cormorant Garamond", "Times New Roman", serif';
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const finalFontSize = Math.min(width * 0.29, height * 0.56, 156 * ratio);
+  const finalFontSize = Math.min(width * 0.255, height * 0.5, 138 * ratio);
   const finalFont = `700 ${finalFontSize}px ${serifFont}`;
   const flowDuration = prefersReducedMotion ? 1300 : 3000;
   const settleDuration = prefersReducedMotion ? 420 : 760;
@@ -413,13 +490,13 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
     targetCtx.textBaseline = 'middle';
     targetCtx.lineJoin = 'round';
     targetCtx.lineCap = 'round';
-    targetCtx.lineWidth = Math.max(2.4 * ratio, finalFontSize * 0.08);
-    targetCtx.strokeStyle = 'rgba(255, 250, 244, 0.92)';
+    targetCtx.lineWidth = Math.max(1.4 * ratio, finalFontSize * 0.045);
+    targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
     targetCtx.strokeText(glyph, x, y);
 
-    targetCtx.shadowColor = 'rgba(120, 83, 66, 0.18)';
-    targetCtx.shadowBlur = finalFontSize * 0.08;
-    targetCtx.shadowOffsetY = finalFontSize * 0.03;
+    targetCtx.shadowColor = 'rgba(255, 255, 255, 0.26)';
+    targetCtx.shadowBlur = finalFontSize * 0.085;
+    targetCtx.shadowOffsetY = finalFontSize * 0.014;
     targetCtx.fillStyle = textColor;
     targetCtx.fillText(glyph, x, y);
     targetCtx.restore();
@@ -474,9 +551,9 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   wordCanvas.height = height;
   const wordCtx = wordCanvas.getContext('2d');
   if (!wordCtx) return;
-  const logoText = ['V', 'e', 'l', 'n', 'a'];
-  const logoSpacing = finalFontSize * 0.025;
-  const logoPairAdjustments = [-finalFontSize * 0.05, 0, 0, 0];
+  const logoText = ['L', 'A', 'N', 'I'];
+  const logoSpacing = finalFontSize * 0.01;
+  const logoPairAdjustments = [-finalFontSize * 0.03, -finalFontSize * 0.015, -finalFontSize * 0.015];
   wordCtx.font = finalFont;
   const glyphWidths = logoText.map((glyph) => wordCtx.measureText(glyph).width);
   const totalWordWidth = glyphWidths.reduce((sum, glyphWidth) => sum + glyphWidth, 0)
@@ -888,7 +965,8 @@ function bindHomeEvents() {
 
   document.querySelectorAll('[data-home-theme-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
-      uiState.homeTheme = uiState.homeTheme === 'dark' ? 'light' : 'dark';
+      const currentIndex = HOME_THEME_ORDER.indexOf(uiState.homeTheme);
+      uiState.homeTheme = HOME_THEME_ORDER[(currentIndex + 1) % HOME_THEME_ORDER.length];
       render();
     });
   });
@@ -1039,6 +1117,14 @@ function bindScreenNavigationEvents() {
 }
 
 function buildComposeCaption(values) {
+  if (values.templateId === 'page8' && Array.isArray(values.customLayout?.pretextBoxes)) {
+    return values.customLayout.pretextBoxes
+      .filter((box) => box.kind === 'title' || box.kind === 'body')
+      .map((box) => String(box.data?.text || '').trim())
+      .filter(Boolean)
+      .join(' / ')
+      .slice(0, 120);
+  }
   if (values.templateId === 'page8' && Array.isArray(values.customLayout?.textBoxes)) {
     return values.customLayout.textBoxes
       .map((box) => String(box.text || '').trim())
@@ -1125,13 +1211,26 @@ async function drawFileCover(ctx, file, rect, position = { x: 0.5, y: 0.5 }) {
   let sy = 0;
   let sw = bitmap.width;
   let sh = bitmap.height;
+  const zoom = Math.max(1, Number(position?.zoom) || 1);
+  const hasDirectCrop = Number.isFinite(position?.cropX) || Number.isFinite(position?.cropY);
+  let focusX = Math.min(1, Math.max(0, position.x ?? 0.5));
+  let focusY = Math.min(1, Math.max(0, position.y ?? 0.5));
+
+  if (hasDirectCrop) {
+    const baseRenderedWidth = imageRatio > rectRatio ? rect.height * imageRatio : rect.width;
+    const baseRenderedHeight = imageRatio > rectRatio ? rect.height : rect.width / imageRatio;
+    const overflowX = Math.max(0, (baseRenderedWidth * zoom) - rect.width);
+    const overflowY = Math.max(0, (baseRenderedHeight * zoom) - rect.height);
+    focusX = overflowX ? Math.min(1, Math.max(0, 0.5 - ((Number(position?.cropX) || 0) / overflowX))) : 0.5;
+    focusY = overflowY ? Math.min(1, Math.max(0, 0.5 - ((Number(position?.cropY) || 0) / overflowY))) : 0.5;
+  }
 
   if (imageRatio > rectRatio) {
-    sw = bitmap.height * rectRatio;
-    sx = (bitmap.width - sw) * Math.min(1, Math.max(0, position.x ?? 0.5));
+    sw = Math.max(1, (bitmap.height * rectRatio) / zoom);
+    sx = (bitmap.width - sw) * focusX;
   } else {
-    sh = bitmap.width / rectRatio;
-    sy = (bitmap.height - sh) * Math.min(1, Math.max(0, position.y ?? 0.5));
+    sh = Math.max(1, (bitmap.width / rectRatio) / zoom);
+    sy = (bitmap.height - sh) * focusY;
   }
 
   ctx.save();
@@ -1208,32 +1307,34 @@ function bindComposeEvents() {
   const composeSheet = document.getElementById('composeSheet');
   const composeFrame = composeSheet?.querySelector('.compose-sheet__frame') || null;
   const customCanvas = composeSheet?.querySelector('[data-custom-canvas]') || null;
-  const composeDraft = getActivePost(uiState.composeEditingPostId)?.composeData || null;
+  const composeDraft = uiState.composeWorkingDraft || getActivePost(uiState.composeEditingPostId)?.composeData || null;
   const page8DraftValues = {
     ...composePreviewDefaults,
     ...(composeDraft || {}),
   };
   const previewUrls = {
-    imageInputPrimary: '',
-    imageInputSecondary: '',
-    imageInputAccent: '',
+    imageInputPrimary: typeof composeDraft?.standardFiles?.primary?.file === 'string' ? composeDraft.standardFiles.primary.file : '',
+    imageInputSecondary: typeof composeDraft?.standardFiles?.secondary?.file === 'string' ? composeDraft.standardFiles.secondary.file : '',
+    imageInputAccent: typeof composeDraft?.standardFiles?.accent?.file === 'string' ? composeDraft.standardFiles.accent.file : '',
   };
   const selectedFiles = {
-    primary: { file: null, position: { x: 0.5, y: 0.5 }, imageSize: null },
-    secondary: { file: null, position: { x: 0.5, y: 0.5 }, imageSize: null },
-    accent: { file: null, position: { x: 0.5, y: 0.5 }, imageSize: null },
+    primary: createComposeFileState(composeDraft?.standardFiles?.primary),
+    secondary: createComposeFileState(composeDraft?.standardFiles?.secondary),
+    accent: createComposeFileState(composeDraft?.standardFiles?.accent),
   };
   const tagToggle = document.querySelector('[data-toggle-compose-tags]');
   const tagPanel = document.querySelector('[data-compose-tags]');
   const previewToggle = document.querySelector('[data-toggle-compose-preview]');
   const customTemplateControls = document.querySelector('[data-custom-template-controls]');
   const customInspector = document.querySelector('[data-custom-inspector]');
+  const pretextComposeHost = document.querySelector('[data-compose-pretext-host]');
   const editables = Array.from(document.querySelectorAll('[data-editable]'));
   const customLayoutState = {
     options: normalizePage8Options(composeDraft?.customLayout || {}),
     imageBoxes: normalizePage8ImageBoxes(composeDraft?.customLayout || {}),
     textBoxes: normalizePage8TextBoxes(composeDraft?.customLayout || {}, page8DraftValues),
     selectedId: null,
+    imageMode: 'frame',
   };
   const customImageFiles = {};
   const editableKeyMap = {
@@ -1250,7 +1351,85 @@ function bindComposeEvents() {
     accent: document.querySelector('[data-slot="imageInputAccent"]'),
   };
 
+  function serializeStandardFiles() {
+    return {
+      primary: createComposeFileState(selectedFiles.primary),
+      secondary: createComposeFileState(selectedFiles.secondary),
+      accent: createComposeFileState(selectedFiles.accent),
+    };
+  }
+
+  function persistComposeDraft(partial = {}) {
+    const nextDraft = createComposeWorkingDraft({
+      ...(uiState.composeWorkingDraft || composeDraft || {}),
+      ...partial,
+    });
+    uiState.composeWorkingDraft = nextDraft;
+    uiState.composeTemplateId = nextDraft.templateId;
+    uiState.composeBackgroundColor = nextDraft.backgroundColor;
+    return nextDraft;
+  }
+
+  function buildComposeDraftSnapshot(options = {}) {
+    const { customLayoutOverride } = options;
+    const checkedTemplate = composeRoot.querySelector('input[name="templateId"]:checked');
+    const checkedBackground = composeRoot.querySelector('input[name="backgroundColor"]:checked');
+    const currentTemplateId = String(
+      checkedTemplate?.value
+      || composeSheet?.dataset.template
+      || uiState.composeTemplateId
+      || composeDraft?.templateId
+      || DEFAULT_COMPOSE_TEMPLATE,
+    );
+    const currentBackground = String(
+      checkedBackground?.value
+      || uiState.composeBackgroundColor
+      || composeDraft?.backgroundColor
+      || '#f8f4ee',
+    );
+    const baseDraft = persistComposeDraft({
+      templateId: currentTemplateId,
+      backgroundColor: currentBackground,
+      standardFiles: serializeStandardFiles(),
+    });
+
+    const tagSource = form ? new FormData(form) : null;
+    const fixedTags = tagSource
+      ? tagSource.getAll('fixedTags').map((tag) => String(tag))
+      : baseDraft.fixedTags;
+    const freeTags = tagSource
+      ? String(tagSource.get('freeTags') || '')
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+      : baseDraft.freeTags;
+
+    if (currentTemplateId === 'page8') {
+      const nextCustomLayout = customLayoutOverride
+        || activeComposeBridge?.getSerializedLayout?.()
+        || baseDraft.customLayout;
+      return persistComposeDraft({
+        fixedTags,
+        freeTags,
+        customLayout: nextCustomLayout,
+      });
+    }
+
+    return persistComposeDraft({
+      fixedTags,
+      freeTags,
+      headline: getEditableValue('headline') || baseDraft.headline,
+      subhead: getEditableValue('subhead') || baseDraft.subhead,
+      intro: getEditableValue('intro') || baseDraft.intro,
+      body: getEditableValue('body') || baseDraft.body,
+      date: getEditableValue('date') || baseDraft.date,
+      editor: getEditableValue('editor') || baseDraft.editor,
+      customLayout: customLayoutOverride ?? null,
+    });
+  }
+
   const switchComposeStage = (nextStage) => {
+    buildComposeDraftSnapshot();
     uiState.composeStage = nextStage;
     render();
   };
@@ -1258,16 +1437,20 @@ function bindComposeEvents() {
   function loadImageSize(file) {
     return new Promise((resolve) => {
       const image = new Image();
-      const url = URL.createObjectURL(file);
+      const source = typeof file === 'string' ? file : URL.createObjectURL(file);
       image.onload = () => {
         resolve({ width: image.naturalWidth, height: image.naturalHeight });
-        URL.revokeObjectURL(url);
+        if (typeof file !== 'string') {
+          URL.revokeObjectURL(source);
+        }
       };
       image.onerror = () => {
         resolve(null);
-        URL.revokeObjectURL(url);
+        if (typeof file !== 'string') {
+          URL.revokeObjectURL(source);
+        }
       };
-      image.src = url;
+      image.src = source;
     });
   }
 
@@ -1298,9 +1481,39 @@ function bindComposeEvents() {
 
   function getCustomImageState(boxId) {
     if (!customImageFiles[boxId]) {
-      customImageFiles[boxId] = { file: null, position: { x: 0.5, y: 0.5 }, imageSize: null, previewUrl: '' };
+      customImageFiles[boxId] = { file: null, position: { x: 0.5, y: 0.5, zoom: 1 }, imageSize: null, previewUrl: '' };
     }
     return customImageFiles[boxId];
+  }
+
+  function getCustomTextPreset(kind) {
+    if (kind === 'title') {
+      return {
+        kind: 'title',
+        fontSize: 0.046,
+        lineHeight: 1.12,
+        padding: 0.01,
+        family: 'serif',
+        weight: 600,
+        align: 'left',
+      };
+    }
+    return {
+      kind: 'body',
+      fontSize: 0.026,
+      lineHeight: 1.45,
+      padding: 0.012,
+      family: 'sans',
+      weight: 500,
+      align: 'left',
+    };
+  }
+
+  function applyCustomTextPreset(textItem, kind) {
+    Object.assign(textItem, {
+      ...textItem,
+      ...getCustomTextPreset(kind),
+    });
   }
 
   function normalizeEditableContent(element) {
@@ -1395,10 +1608,17 @@ function bindComposeEvents() {
   }
 
   function setPreviewBackground() {
-    if (!composeSheet) return;
     const checked = composeRoot.querySelector('input[name="backgroundColor"]:checked');
     const nextBackground = checked?.value || uiState.composeBackgroundColor || '#f8f4ee';
     uiState.composeBackgroundColor = nextBackground;
+    persistComposeDraft({ backgroundColor: nextBackground });
+    if (!composeSheet) {
+      composeRoot.querySelectorAll('.color-chip').forEach((chip) => {
+        const input = chip.querySelector('input[name="backgroundColor"]');
+        chip.classList.toggle('is-active', Boolean(input?.checked));
+      });
+      return;
+    }
     composeSheet.style.setProperty('--sheet-bg', nextBackground);
     composeRoot.querySelectorAll('.color-chip').forEach((chip) => {
       const input = chip.querySelector('input[name="backgroundColor"]');
@@ -1407,10 +1627,29 @@ function bindComposeEvents() {
   }
 
   function setPreviewTemplate(templateId) {
-    if (!composeSheet) return;
     const nextTemplateId = templateId || DEFAULT_COMPOSE_TEMPLATE;
-    composeSheet.dataset.template = nextTemplateId;
+    const currentTemplateId = composeSheet?.dataset.template || (pretextComposeHost ? 'page8' : null);
+    const isSwitchingPage8Layout = composeStage === 'edit'
+      && currentTemplateId
+      && currentTemplateId !== nextTemplateId
+      && (currentTemplateId === 'page8' || nextTemplateId === 'page8');
     uiState.composeTemplateId = nextTemplateId;
+    persistComposeDraft({ templateId: nextTemplateId });
+    if (isSwitchingPage8Layout) {
+      render();
+      return;
+    }
+    if (!composeSheet) {
+      composeRoot.querySelectorAll('.template-thumb').forEach((card) => {
+        const input = card.querySelector('input[name="templateId"]');
+        card.classList.toggle('is-active', input?.value === nextTemplateId);
+      });
+      if (pretextComposeHost && nextTemplateId !== 'page8') {
+        render();
+      }
+      return;
+    }
+    composeSheet.dataset.template = nextTemplateId;
     composeRoot.querySelectorAll('.template-thumb').forEach((card) => {
       const input = card.querySelector('input[name="templateId"]');
       card.classList.toggle('is-active', input?.value === nextTemplateId);
@@ -1658,6 +1897,35 @@ function bindComposeEvents() {
     return type === 'image' ? PAGE8_MIN_IMAGE_SIZE : PAGE8_MIN_TEXT_SIZE;
   }
 
+  function formatCustomMeasure(value) {
+    return `${Math.round(value * 100)}%`;
+  }
+
+  function fitCustomTextBoxToContent(itemId, options = {}) {
+    const { rerender = false } = options;
+    if (!composeFrame || !customCanvas) return;
+    const record = itemId ? getCustomItemRecord(itemId) : null;
+    if (!record || record.type !== 'text') return;
+    const liveText = customCanvas.querySelector(`[data-custom-text="${itemId}"]`);
+    if (!liveText) return;
+    const frameRect = composeFrame.getBoundingClientRect();
+    if (!frameRect.height) return;
+    const nextHeight = Math.max(
+      PAGE8_MIN_TEXT_SIZE.height,
+      snapPage8Value((liveText.scrollHeight + 8) / frameRect.height),
+    );
+    if (Math.abs(nextHeight - record.item.height) < (PAGE8_GRID / 2)) return;
+    record.item.height = nextHeight;
+    Object.assign(record.item, clampCustomBoxRect(record.item, PAGE8_MIN_TEXT_SIZE));
+    Object.assign(record.item, findSafeTextPosition(record.item, getTextBlockers(itemId)));
+    if (rerender) {
+      renderCustomCanvas();
+      return;
+    }
+    applyCustomItemRect(itemId, record.item);
+    renderCustomInspector();
+  }
+
   function syncCustomSelection() {
     if (!customCanvas) return;
     customCanvas.querySelectorAll('[data-custom-item]').forEach((item) => {
@@ -1707,20 +1975,61 @@ function bindComposeEvents() {
     }
 
     if (record.type === 'image') {
+      const imageState = getCustomImageState(record.item.id);
+      const hasImage = Boolean(imageState.previewUrl || imageState.file);
+      const zoomValue = Math.max(1, Number(imageState.position?.zoom) || 1);
       customInspector.innerHTML = `
         <p class="compose-custom-inspector__title">Image Box</p>
-        <p class="compose-custom-inspector__note">画像面をタップで差し替え。移動は上部バー、サイズ変更は右下ハンドルです。</p>
+        <p class="compose-custom-inspector__note">${customLayoutState.imageMode === 'crop' ? 'Crop 中は画像面をドラッグして見せ方を調整します。' : 'Frame 中はボックス自体を動かします。Crop に切り替えると画像だけを動かせます。'}</p>
         <div class="compose-custom-inspector__meta">
-          <span>W ${(record.item.width * 100).toFixed(0)}%</span>
-          <span>H ${(record.item.height * 100).toFixed(0)}%</span>
+          <span>W ${formatCustomMeasure(record.item.width)}</span>
+          <span>H ${formatCustomMeasure(record.item.height)}</span>
         </div>
-        <div class="compose-custom-inspector__segmented">
+        <div class="compose-custom-inspector__field">
+          <span>Mode</span>
+          <div class="compose-custom-inspector__segmented compose-custom-inspector__segmented--dual">
+            <button type="button" data-custom-image-mode="frame" class="${customLayoutState.imageMode === 'frame' ? 'is-active' : ''}">Frame</button>
+            <button type="button" data-custom-image-mode="crop" class="${customLayoutState.imageMode === 'crop' ? 'is-active' : ''}" ${hasImage ? '' : 'disabled'}>Crop</button>
+          </div>
+        </div>
+        <label class="compose-custom-inspector__field">
+          <span>Zoom</span>
+          <input class="compose-custom-inspector__range" data-custom-control="zoom" type="range" min="1" max="3" step="0.01" value="${zoomValue}" ${hasImage ? '' : 'disabled'} />
+        </label>
+        <div class="compose-custom-inspector__segmented compose-custom-inspector__segmented--dual">
+          <button type="button" data-custom-control="replace-image">${hasImage ? 'Replace' : 'Upload'}</button>
           <button type="button" data-custom-control="delete">Delete</button>
         </div>
       `;
+      customInspector.querySelectorAll('[data-custom-image-mode]').forEach((button) => {
+        button.addEventListener('click', () => {
+          if (button.hasAttribute('disabled')) return;
+          customLayoutState.imageMode = button.dataset.customImageMode === 'crop' ? 'crop' : 'frame';
+          renderCustomInspector();
+        });
+      });
+      customInspector.querySelector('[data-custom-control="zoom"]')?.addEventListener('input', (event) => {
+        imageState.position.zoom = Math.max(1, Number(event.target.value) || 1);
+        renderCustomCanvas();
+      });
+      customInspector.querySelector('[data-custom-control="replace-image"]')?.addEventListener('click', () => {
+        document.getElementById(`custom-image-${record.item.id}`)?.click();
+      });
     } else {
       customInspector.innerHTML = `
       <p class="compose-custom-inspector__title">Text Box</p>
+      <p class="compose-custom-inspector__note">Title / Body のプリセットを起点にして、細部は個別調整できます。</p>
+      <div class="compose-custom-inspector__meta">
+        <span>W ${formatCustomMeasure(record.item.width)}</span>
+        <span>H ${formatCustomMeasure(record.item.height)}</span>
+      </div>
+      <div class="compose-custom-inspector__field">
+        <span>Preset</span>
+        <div class="compose-custom-inspector__segmented compose-custom-inspector__segmented--dual">
+          <button type="button" data-custom-preset="title" class="${record.item.kind === 'title' ? 'is-active' : ''}">Title</button>
+          <button type="button" data-custom-preset="body" class="${record.item.kind === 'body' ? 'is-active' : ''}">Body</button>
+        </div>
+      </div>
       <label class="compose-custom-inspector__field">
         <span>Text</span>
         <textarea class="compose-custom-inspector__textarea" data-custom-control="text">${escapeHtml(record.item.text)}</textarea>
@@ -1728,6 +2037,14 @@ function bindComposeEvents() {
       <label class="compose-custom-inspector__field">
         <span>Size</span>
         <input class="compose-custom-inspector__range" data-custom-control="fontSize" type="range" min="14" max="54" value="${Math.round(record.item.fontSize * 520)}" />
+      </label>
+      <label class="compose-custom-inspector__field">
+        <span>Leading</span>
+        <input class="compose-custom-inspector__range" data-custom-control="lineHeight" type="range" min="100" max="220" step="1" value="${Math.round(record.item.lineHeight * 100)}" />
+      </label>
+      <label class="compose-custom-inspector__field">
+        <span>Padding</span>
+        <input class="compose-custom-inspector__range" data-custom-control="padding" type="range" min="4" max="40" step="1" value="${Math.round(record.item.padding * 1000)}" />
       </label>
       <label class="compose-custom-inspector__field">
         <span>Weight</span>
@@ -1743,11 +2060,13 @@ function bindComposeEvents() {
       </div>
       <div class="compose-custom-inspector__field">
         <span>Typeface</span>
-        <div class="compose-custom-inspector__segmented">
+        <div class="compose-custom-inspector__segmented compose-custom-inspector__segmented--dual">
           <button type="button" data-custom-family="sans" class="${record.item.family === 'sans' ? 'is-active' : ''}">Sans</button>
           <button type="button" data-custom-family="serif" class="${record.item.family === 'serif' ? 'is-active' : ''}">Serif</button>
-          <button type="button" data-custom-control="delete">Delete</button>
         </div>
+      </div>
+      <div class="compose-custom-inspector__segmented compose-custom-inspector__segmented--single">
+        <button type="button" data-custom-control="delete">Delete</button>
       </div>
     `;
       const textArea = customInspector.querySelector('[data-custom-control="text"]');
@@ -1773,6 +2092,17 @@ function bindComposeEvents() {
         if (liveText && liveText !== document.activeElement) {
           liveText.textContent = nextRecord.item.text;
         }
+        fitCustomTextBoxToContent(nextRecord.item.id);
+      });
+
+      customInspector.querySelectorAll('[data-custom-preset]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+          if (!nextRecord || nextRecord.type !== 'text') return;
+          applyCustomTextPreset(nextRecord.item, button.dataset.customPreset === 'title' ? 'title' : 'body');
+          renderCustomCanvas();
+          fitCustomTextBoxToContent(nextRecord.item.id, { rerender: true });
+        });
       });
 
       customInspector.querySelector('[data-custom-control="fontSize"]')?.addEventListener('input', (event) => {
@@ -1780,6 +2110,23 @@ function bindComposeEvents() {
         if (!nextRecord || nextRecord.type !== 'text') return;
         nextRecord.item.fontSize = Number(event.target.value) / 520;
         renderCustomCanvas();
+        fitCustomTextBoxToContent(nextRecord.item.id, { rerender: true });
+      });
+
+      customInspector.querySelector('[data-custom-control="lineHeight"]')?.addEventListener('input', (event) => {
+        const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+        if (!nextRecord || nextRecord.type !== 'text') return;
+        nextRecord.item.lineHeight = Number(event.target.value) / 100;
+        renderCustomCanvas();
+        fitCustomTextBoxToContent(nextRecord.item.id, { rerender: true });
+      });
+
+      customInspector.querySelector('[data-custom-control="padding"]')?.addEventListener('input', (event) => {
+        const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
+        if (!nextRecord || nextRecord.type !== 'text') return;
+        nextRecord.item.padding = Number(event.target.value) / 1000;
+        renderCustomCanvas();
+        fitCustomTextBoxToContent(nextRecord.item.id, { rerender: true });
       });
 
       customInspector.querySelector('[data-custom-control="weight"]')?.addEventListener('input', (event) => {
@@ -1787,6 +2134,7 @@ function bindComposeEvents() {
         if (!nextRecord || nextRecord.type !== 'text') return;
         nextRecord.item.weight = Number(event.target.value);
         renderCustomCanvas();
+        fitCustomTextBoxToContent(nextRecord.item.id, { rerender: true });
       });
 
       customInspector.querySelectorAll('[data-custom-align]').forEach((button) => {
@@ -1803,10 +2151,12 @@ function bindComposeEvents() {
           const nextRecord = customLayoutState.selectedId ? getCustomItemRecord(customLayoutState.selectedId) : null;
           if (!nextRecord || nextRecord.type !== 'text') return;
           nextRecord.item.family = button.dataset.customFamily === 'serif' ? 'serif' : 'sans';
+          nextRecord.item.kind = nextRecord.item.family === 'serif' ? 'title' : 'body';
           nextRecord.item.weight = nextRecord.item.family === 'serif'
             ? Math.max(500, nextRecord.item.weight)
             : Math.min(600, nextRecord.item.weight);
           renderCustomCanvas();
+          fitCustomTextBoxToContent(nextRecord.item.id, { rerender: true });
         });
       });
     }
@@ -1852,9 +2202,10 @@ function bindComposeEvents() {
       const rect = page8RectToPercent(box);
       const state = getCustomImageState(box.id);
       const hasImage = Boolean(state.previewUrl || state.file);
+      const imagePosition = state.position || { x: 0.5, y: 0.5, zoom: 1 };
       const selectedClass = `${customLayoutState.selectedId === box.id ? ' is-selected' : ''}${hasImage ? '' : ' is-empty'}`;
       const surfaceMarkup = hasImage
-        ? `<div class="compose-custom-item__image" style="background-image:url('${state.previewUrl}');background-position:${(state.position.x || 0.5) * 100}% ${(state.position.y || 0.5) * 100}%;"></div>`
+        ? `<img class="compose-custom-item__image" src="${state.previewUrl}" alt="" draggable="false" style="object-position:${(imagePosition.x || 0.5) * 100}% ${(imagePosition.y || 0.5) * 100}%;transform:scale(${Math.max(1, imagePosition.zoom || 1)});" />`
         : `<div class="compose-custom-item__placeholder"><span class="compose-custom-item__plus">${getIcon('compose')}</span></div>`;
       return `
         <div
@@ -1867,6 +2218,7 @@ function bindComposeEvents() {
           ${interactive
             ? `<div class="compose-custom-item__surface compose-custom-item__surface--image" data-custom-surface="${box.id}">${surfaceMarkup}</div>`
             : `<div class="compose-custom-item__surface compose-custom-item__surface--image">${surfaceMarkup}</div>`}
+          ${interactive ? `<button class="compose-custom-item__drag" type="button" data-custom-drag="${box.id}" aria-label="move image box">${getIcon('drag')}</button>` : ''}
           ${interactive ? `<button class="compose-custom-item__remove" type="button" data-custom-remove="${box.id}" aria-label="remove image box">&times;</button>` : ''}
           ${interactive ? `<button class="compose-custom-item__resize" type="button" data-custom-resize="${box.id}" aria-label="resize image box"></button>` : ''}
         </div>
@@ -1888,8 +2240,9 @@ function bindComposeEvents() {
             data-custom-text="${box.id}"
             contenteditable="${interactive ? 'true' : 'false'}"
             spellcheck="false"
-            style="text-align:${box.align};font-size:${Math.max(11, box.fontSize * 520)}px;line-height:${box.lineHeight};font-family:${box.family === 'serif' ? `'Cormorant Garamond', 'Times New Roman', serif` : `'Noto Sans JP', sans-serif`};font-weight:${box.weight};"
+            style="text-align:${box.align};font-size:${Math.max(11, box.fontSize * 520)}px;line-height:${box.lineHeight};padding:${Math.max(4, box.padding * 520)}px;font-family:${box.family === 'serif' ? `'Cormorant Garamond', 'Times New Roman', serif` : `'Noto Sans JP', sans-serif`};font-weight:${box.weight};"
           >${escapeHtml(box.text)}</div>
+          ${interactive ? `<button class="compose-custom-item__drag" type="button" data-custom-drag="${box.id}" aria-label="move text box">${getIcon('drag')}</button>` : ''}
           ${interactive ? `<button class="compose-custom-item__remove" type="button" data-custom-remove="${box.id}" aria-label="remove text box">&times;</button>` : ''}
           ${interactive ? `<button class="compose-custom-item__resize" type="button" data-custom-resize="${box.id}" aria-label="resize text box"></button>` : ''}
         </div>
@@ -1915,25 +2268,35 @@ function bindComposeEvents() {
         if (!record || !composeFrame) return;
         if (event.target.closest('[data-custom-remove], [data-custom-resize]')) return;
         event.preventDefault();
+        const dragHandle = event.target.closest('[data-custom-drag]');
         const textSurface = event.target.closest('[data-custom-text]');
+        const imageSurface = event.target.closest('[data-custom-surface]');
         const imageState = record.type === 'image' ? getCustomImageState(itemId) : null;
         selectCustomItem(itemId);
         const frameRect = composeFrame.getBoundingClientRect();
+        const hasImage = Boolean(imageState?.previewUrl || imageState?.file);
+        const isCropDrag = record.type === 'image'
+          && customLayoutState.imageMode === 'crop'
+          && hasImage
+          && imageSurface
+          && !dragHandle;
         dragState = {
           pointerId: event.pointerId,
           itemId,
-          mode: 'move',
-          originX: record.item.x,
-          originY: record.item.y,
+          mode: isCropDrag ? 'crop-image' : 'move',
+          originX: isCropDrag ? (imageState.position.x || 0.5) : record.item.x,
+          originY: isCropDrag ? (imageState.position.y || 0.5) : record.item.y,
           startX: event.clientX,
           startY: event.clientY,
           frameWidth: frameRect.width,
           frameHeight: frameRect.height,
           type: record.type,
-          targetSurface: record.type === 'image' && !(imageState?.previewUrl || imageState?.file)
-            ? event.target.closest('[data-custom-surface]')
+          zoom: imageState?.position?.zoom || 1,
+          targetSurface: record.type === 'image' && !hasImage
+            ? imageSurface
             : null,
-          targetText: textSurface,
+          targetText: dragHandle ? null : textSurface,
+          cropSurface: isCropDrag ? imageSurface : null,
           dragged: false,
         };
         item.setPointerCapture?.(event.pointerId);
@@ -1954,21 +2317,40 @@ function bindComposeEvents() {
           width: record.item.width,
           height: record.item.height,
         };
-        record.item.x = dragState.originX + (deltaX / dragState.frameWidth);
-        record.item.y = dragState.originY + (deltaY / dragState.frameHeight);
-        Object.assign(record.item, clampCustomBoxRect(record.item, getCustomItemMinimums(record.type)));
-        const safetyOptions = record.type === 'image' ? { ignoreText: true } : {};
-        Object.assign(record.item, findNearestSafeBoxPosition(record.item, record.item.id, getCustomItemMinimums(record.type), safetyOptions));
-        if (!isSafeCustomPosition(record.item, record.item.id, safetyOptions)) {
-          Object.assign(record.item, previousRect);
-        }
-        if (record.type === 'image') {
-          reflowTextBoxes(record.item.id);
+        if (dragState.mode === 'crop-image') {
+          const surfaceRect = dragState.cropSurface?.getBoundingClientRect();
+          const imageState = getCustomImageState(dragState.itemId);
+          const size = imageState.imageSize;
+          if (!surfaceRect || !size) return;
+          const imageRatio = size.width / size.height;
+          const surfaceRatio = surfaceRect.width / surfaceRect.height;
+          const renderedWidth = (imageRatio > surfaceRatio ? surfaceRect.height * imageRatio : surfaceRect.width) * dragState.zoom;
+          const renderedHeight = (imageRatio > surfaceRatio ? surfaceRect.height : surfaceRect.width / imageRatio) * dragState.zoom;
+          const overflowX = Math.max(0, renderedWidth - surfaceRect.width);
+          const overflowY = Math.max(0, renderedHeight - surfaceRect.height);
+          imageState.position.x = overflowX ? Math.min(1, Math.max(0, dragState.originX - (deltaX / overflowX))) : 0.5;
+          imageState.position.y = overflowY ? Math.min(1, Math.max(0, dragState.originY - (deltaY / overflowY))) : 0.5;
+          const liveImage = dragState.cropSurface?.querySelector('.compose-custom-item__image');
+          if (liveImage) {
+            liveImage.style.objectPosition = `${imageState.position.x * 100}% ${imageState.position.y * 100}%`;
+          }
         } else {
-          Object.assign(record.item, findSafeTextPosition(record.item, getTextBlockers(record.item.id)));
+          record.item.x = dragState.originX + (deltaX / dragState.frameWidth);
+          record.item.y = dragState.originY + (deltaY / dragState.frameHeight);
+          Object.assign(record.item, clampCustomBoxRect(record.item, getCustomItemMinimums(record.type)));
+          const safetyOptions = record.type === 'image' ? { ignoreText: true } : {};
+          Object.assign(record.item, findNearestSafeBoxPosition(record.item, record.item.id, getCustomItemMinimums(record.type), safetyOptions));
+          if (!isSafeCustomPosition(record.item, record.item.id, safetyOptions)) {
+            Object.assign(record.item, previousRect);
+          }
+          if (record.type === 'image') {
+            reflowTextBoxes(record.item.id);
+          } else {
+            Object.assign(record.item, findSafeTextPosition(record.item, getTextBlockers(record.item.id)));
+          }
+          renderCustomInspector();
+          applyAllCustomItemRects();
         }
-        renderCustomInspector();
-        applyAllCustomItemRects();
       });
 
       const finishItemDrag = (event) => {
@@ -2042,6 +2424,7 @@ function bindComposeEvents() {
         if (inspectorText && inspectorText !== document.activeElement) {
           inspectorText.value = record.item.text;
         }
+        fitCustomTextBoxToContent(record.item.id);
       });
     });
 
@@ -2055,7 +2438,7 @@ function bindComposeEvents() {
           state.previewUrl = '';
         }
         state.file = file;
-        state.position = { x: 0.5, y: 0.5 };
+        state.position = { x: 0.5, y: 0.5, zoom: 1 };
         state.imageSize = file ? await loadImageSize(file) : null;
         if (file) {
           state.previewUrl = fileToPreviewUrl(file);
@@ -2127,6 +2510,12 @@ function bindComposeEvents() {
 
       handle.addEventListener('pointerup', finishDrag);
       handle.addEventListener('pointercancel', finishDrag);
+    });
+
+    window.requestAnimationFrame(() => {
+      customLayoutState.textBoxes.forEach((box) => {
+        fitCustomTextBoxToContent(box.id);
+      });
     });
   }
 
@@ -2260,6 +2649,22 @@ function bindComposeEvents() {
 
   setPreviewMode(false);
 
+  if (pretextComposeHost) {
+    import('../../src/pretextComposeBridge.jsx')
+      .then(({ mountComposePretextEditor }) => {
+        if (!pretextComposeHost.isConnected) return;
+        activeComposeBridge = mountComposePretextEditor(pretextComposeHost, {
+          customLayout: composeDraft?.customLayout || {},
+          textValues: page8DraftValues,
+        });
+      })
+      .catch((error) => {
+        console.error('Failed to mount pretext compose editor', error);
+        pretextComposeHost.innerHTML = '<p class="compose-pretext-host__error">Failed to load the editor.</p>';
+      });
+    return;
+  }
+
   composeRoot.querySelectorAll('[data-custom-add]').forEach((button) => {
     button.addEventListener('click', (event) => {
       event.preventDefault();
@@ -2286,14 +2691,16 @@ function bindComposeEvents() {
 
       const nextText = findSafeTextPosition({
         id: createCustomId('text'),
+        kind: 'body',
         text: 'text',
         isDefaultText: true,
         x: 0.18,
         y: 0.2,
         width: 0.28,
         height: 0.12,
-        fontSize: 0.028,
-        lineHeight: 1.35,
+        fontSize: 0.026,
+        lineHeight: 1.45,
+        padding: 0.012,
         align: 'left',
         family: 'sans',
         weight: 500,
@@ -2320,18 +2727,13 @@ function bindComposeEvents() {
     if (!input) return;
     input.addEventListener('change', async (event) => {
       const file = event.target.files?.[0] || null;
-      selectedFiles[stateKey].file = file;
+      selectedFiles[stateKey].file = file ? await fileToWebpDataUrl(file, { maxWidth: 1600, quality: 0.9 }) : null;
       selectedFiles[stateKey].position = { x: 0.5, y: 0.5 };
       selectedFiles[stateKey].imageSize = file ? await loadImageSize(file) : null;
-      if (previewUrls[inputId]) {
-        URL.revokeObjectURL(previewUrls[inputId]);
-        previewUrls[inputId] = '';
-      }
-      if (file) {
-        previewUrls[inputId] = fileToPreviewUrl(file);
-      }
+      previewUrls[inputId] = selectedFiles[stateKey].file || '';
       setPreviewImage(inputId);
       updateSlotPosition(inputId);
+      persistComposeDraft({ standardFiles: serializeStandardFiles() });
     });
 
     const removeButton = document.querySelector(`[data-slot-remove="${inputId}"]`);
@@ -2339,13 +2741,11 @@ function bindComposeEvents() {
       removeButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (previewUrls[inputId]) {
-          URL.revokeObjectURL(previewUrls[inputId]);
-          previewUrls[inputId] = '';
-        }
+        previewUrls[inputId] = '';
         selectedFiles[stateKey] = { file: null, position: { x: 0.5, y: 0.5 }, imageSize: null };
         input.value = '';
         setPreviewImage(inputId);
+        persistComposeDraft({ standardFiles: serializeStandardFiles() });
       });
     }
 
@@ -2417,6 +2817,7 @@ function bindComposeEvents() {
         selectedFiles[stateKey].position.x = overflowX ? Math.min(1, Math.max(0, dragState.originX - (deltaX / overflowX))) : 0.5;
         selectedFiles[stateKey].position.y = overflowY ? Math.min(1, Math.max(0, dragState.originY - (deltaY / overflowY))) : 0.5;
         updateSlotPosition(inputId);
+        persistComposeDraft({ standardFiles: serializeStandardFiles() });
       });
 
       const finishDrag = (event) => {
@@ -2492,54 +2893,38 @@ function bindComposeEvents() {
     });
   });
 
+  if (composeStage !== 'tags') {
+    return;
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const formData = new FormData(form);
-    const fixedTags = formData.getAll('fixedTags').map((tag) => String(tag));
-    const freeTags = String(formData.get('freeTags') || '')
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    const isCustomTemplate = composeSheet?.dataset.template === 'page8';
-    const normalizedCustomLayout = isCustomTemplate
-      ? computePage8ResolvedLayout({
-        ...customLayoutState.options,
-        imageBoxes: customLayoutState.imageBoxes,
-        textBoxes: customLayoutState.textBoxes.map((box) => ({
-          ...box,
-          text: String(box.text || '').replace(/\r/g, ''),
-        })),
-      }, page8DraftValues)
-      : null;
-
+    const draftSnapshot = buildComposeDraftSnapshot();
     const values = {
-      templateId: String(formData.get('templateId') || uiState.composeTemplateId || DEFAULT_COMPOSE_TEMPLATE),
-      backgroundColor: String(formData.get('backgroundColor') || uiState.composeBackgroundColor || '#f8f4ee'),
-      headline: getEditableValue('headline'),
-      subhead: getEditableValue('subhead'),
-      intro: getEditableValue('intro'),
-      body: getEditableValue('body'),
-      date: getEditableValue('date'),
-      editor: getEditableValue('editor'),
-      customLayout: normalizedCustomLayout,
+      templateId: draftSnapshot.templateId,
+      backgroundColor: draftSnapshot.backgroundColor,
+      headline: draftSnapshot.headline,
+      subhead: draftSnapshot.subhead,
+      intro: draftSnapshot.intro,
+      body: draftSnapshot.body,
+      date: draftSnapshot.date,
+      editor: draftSnapshot.editor,
+      customLayout: draftSnapshot.customLayout,
     };
-
-    const page8Files = normalizedCustomLayout
-      ? Object.fromEntries(normalizedCustomLayout.imageBoxes.map((box) => [box.id, getCustomImageState(box.id)]))
-      : {};
-    const imageData = await renderComposeTemplate(values, selectedFiles, { page8Files });
+    const imageData = await renderComposeTemplate(values, draftSnapshot.standardFiles, {});
     const profileName = String(getState().profile?.name || 'you').trim() || 'you';
 
     if (uiState.composeEditingPostId) {
       updatePost(uiState.composeEditingPostId, {
         caption: buildComposeCaption(values),
         imageData,
-        fixedTags,
-        freeTags,
+        fixedTags: draftSnapshot.fixedTags,
+        freeTags: draftSnapshot.freeTags,
         composeData: {
           ...values,
-          fixedTags,
-          freeTags,
+          fixedTags: draftSnapshot.fixedTags,
+          freeTags: draftSnapshot.freeTags,
+          standardFiles: draftSnapshot.standardFiles,
         },
       });
     } else {
@@ -2547,19 +2932,21 @@ function bindComposeEvents() {
         authorName: profileName,
         caption: buildComposeCaption(values),
         imageData,
-        fixedTags,
-        freeTags,
+        fixedTags: draftSnapshot.fixedTags,
+        freeTags: draftSnapshot.freeTags,
         composeData: {
           ...values,
-          fixedTags,
-          freeTags,
+          fixedTags: draftSnapshot.fixedTags,
+          freeTags: draftSnapshot.freeTags,
+          standardFiles: draftSnapshot.standardFiles,
         },
       });
     }
 
     uiState.screen = 'timeline';
     uiState.timelineTab = 'recommended';
-    uiState.composeStage = 'edit';
+    uiState.composeStage = 'select';
+    uiState.composeWorkingDraft = null;
     render();
   });
 }
@@ -2835,4 +3222,31 @@ function bindPageEvents() {
   }
 }
 
-render();
+export function bootLegacyApp(root = document.getElementById('app')) {
+  if (!root) {
+    throw new Error('bootLegacyApp requires an app root element.');
+  }
+  app = root;
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && !systemThemeMediaQuery) {
+    systemThemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemThemeChange = () => {
+      if (uiState.homeTheme === 'system') {
+        render();
+      }
+    };
+    if (typeof systemThemeMediaQuery.addEventListener === 'function') {
+      systemThemeMediaQuery.addEventListener('change', handleSystemThemeChange);
+    } else if (typeof systemThemeMediaQuery.addListener === 'function') {
+      systemThemeMediaQuery.addListener(handleSystemThemeChange);
+    }
+  }
+  render();
+  return { render };
+}
+
+if (typeof window !== 'undefined' && !window.__MEMORIES_REACT_HOST__) {
+  const fallbackRoot = document.getElementById('app');
+  if (fallbackRoot) {
+    bootLegacyApp(fallbackRoot);
+  }
+}

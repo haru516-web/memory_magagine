@@ -109,13 +109,18 @@ function normalizeImageBox(box = {}, index = 0) {
 
 function normalizeTextBox(box = {}, index = 0) {
   const hasIncomingText = typeof box.text === 'string';
+  const inferredKind = box.kind === 'title' || box.kind === 'body'
+    ? box.kind
+    : ((Number(box.fontSize) || 0) >= 0.04 || box.family === 'serif' ? 'title' : 'body');
   return {
     id: normalizeId('text', box.id, index),
+    kind: inferredKind,
     text: sanitizeText(box.text, 'text'),
     isDefaultText: typeof box.isDefaultText === 'boolean' ? box.isDefaultText : !hasIncomingText,
     ...clampRect(box, PAGE8_MIN_TEXT_SIZE),
     fontSize: clamp(Number.isFinite(box.fontSize) ? box.fontSize : 0.028, 0.014, 0.09),
     lineHeight: clamp(Number.isFinite(box.lineHeight) ? box.lineHeight : 1.35, 1, 2.2),
+    padding: clamp(Number.isFinite(box.padding) ? box.padding : 0.012, 0.004, 0.05),
     align: box.align === 'center' || box.align === 'right' ? box.align : 'left',
     family: box.family === 'serif' ? 'serif' : 'sans',
     weight: clamp(Number.isFinite(box.weight) ? box.weight : (box.family === 'serif' ? 600 : 500), 400, 700),
@@ -133,7 +138,9 @@ function createLegacyTextBoxes(textValues = {}) {
       height: spec.height,
       fontSize: spec.fontSize,
       lineHeight: spec.lineHeight,
+      padding: spec.family === 'serif' ? 0.01 : 0.012,
       align: spec.align,
+      kind: spec.family === 'serif' && spec.fontSize >= 0.04 ? 'title' : 'body',
       family: spec.family,
       weight: spec.weight,
     }, index))
@@ -193,8 +200,10 @@ export function normalizePage8TextBoxes(customLayout = {}, textValues = {}) {
       y: 0.18,
       width: 0.24,
       height: 0.14,
+      kind: 'title',
       fontSize: 0.046,
       lineHeight: 1.12,
+      padding: 0.01,
       family: 'serif',
       weight: 600,
     }, 0),
