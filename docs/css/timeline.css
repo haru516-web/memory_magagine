@@ -291,6 +291,12 @@
   filter: blur(0.2px);
 }
 
+.orbit-home .orbit-node::before {
+  display: none;
+  animation: none;
+  opacity: 0;
+}
+
 .orbit-node::after {
   content: '';
   position: absolute;
@@ -317,6 +323,12 @@
   animation-duration: 2.1s;
   opacity: 1;
   filter: saturate(1.18) brightness(1.08);
+}
+
+.orbit-home .orbit-node:hover::before,
+.orbit-home .orbit-node.is-active::before {
+  opacity: 0;
+  filter: none;
 }
 
 @keyframes orbit-node-border-spin {

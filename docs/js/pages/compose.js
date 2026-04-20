@@ -9,6 +9,77 @@ const TEMPLATE_COLORS = [
   { value: '#e5ece7', label: 'Sage' },
 ];
 
+function renderComposeBackButton(actionAttr) {
+  return `
+    <button class="button button--ghost page-back page-back--icon" type="button" ${actionAttr} aria-label="Back">
+      ${getIcon('returnLeft')}
+    </button>
+  `;
+}
+
+function renderComposeAddPopoverButton() {
+  return `
+    <div class="compose-header-add" data-pretext-add>
+      <button
+        class="button button--ghost page-back page-back--icon compose-add-button"
+        type="button"
+        data-pretext-add-toggle
+        aria-label="Add layout element"
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        ${getIcon('compose')}
+      </button>
+      <div class="compose-header-add__popover" data-pretext-add-popover hidden>
+        <div class="compose-header-add__row">
+          <span class="compose-header-add__label">Title</span>
+          <div class="compose-header-add__align">
+            <button type="button" class="compose-header-add__option" data-pretext-add-kind="title" data-pretext-add-align="left" aria-label="Add left aligned title">${getIcon('alignLeft')}</button>
+            <button type="button" class="compose-header-add__option" data-pretext-add-kind="title" data-pretext-add-align="center" aria-label="Add centered title">${getIcon('alignCenter')}</button>
+            <button type="button" class="compose-header-add__option" data-pretext-add-kind="title" data-pretext-add-align="right" aria-label="Add right aligned title">${getIcon('alignRight')}</button>
+          </div>
+        </div>
+        <div class="compose-header-add__row">
+          <span class="compose-header-add__label">Body</span>
+          <div class="compose-header-add__align">
+            <button type="button" class="compose-header-add__option" data-pretext-add-kind="body" data-pretext-add-align="left" aria-label="Add left aligned body">${getIcon('alignLeft')}</button>
+            <button type="button" class="compose-header-add__option" data-pretext-add-kind="body" data-pretext-add-align="center" aria-label="Add centered body">${getIcon('alignCenter')}</button>
+            <button type="button" class="compose-header-add__option" data-pretext-add-kind="body" data-pretext-add-align="right" aria-label="Add right aligned body">${getIcon('alignRight')}</button>
+          </div>
+        </div>
+        <div class="compose-header-add__row compose-header-add__row--image">
+          <span class="compose-header-add__label">Image</span>
+          <button type="button" class="compose-header-add__image" data-pretext-add-kind="image">
+            ${getIcon('image')}
+            <span>Image</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderComposeDeleteButton() {
+  return `
+    <button
+      class="button button--ghost page-back page-back--icon compose-delete-button"
+      type="button"
+      data-pretext-delete
+      aria-label="Delete selected element"
+    >
+      ${getIcon('trash')}
+    </button>
+  `;
+}
+
+function renderComposeTagsButton(isEditing) {
+  return `
+    <button class="button button--primary compose-header-tags-button" type="button" data-compose-stage-nav="tags">
+      ${isEditing ? 'Update Tags' : 'タグへ進む'}
+    </button>
+  `;
+}
+
 function renderGroup(groupKey, options, selectedTags = []) {
   return `
     <section class="compose-group compose-group--tags">
@@ -222,7 +293,7 @@ function renderSelectionScreen({ values, selectedId, selectedBackground, headerM
   return `
     <section class="page page--compose page--compose--select" data-compose-stage="select">
       <header class="page-header page-header--with-back page-header--compose">
-        <button class="button button--ghost page-back" type="button" data-close-compose>Back</button>
+        ${renderComposeBackButton('data-close-compose')}
         <div>
           <p class="page-header__mini">${headerMini}</p>
           <h2 class="page-header__title">${headerTitle}</h2>
@@ -249,9 +320,14 @@ function renderSelectionScreen({ values, selectedId, selectedBackground, headerM
 
 function renderEditorScreen({ values, selectedId, selectedBackground, isEditing, headerMini, headerTitle }) {
   return `
-    <section class="page page--compose page--compose--edit" data-compose-stage="edit">
+    <section class="page page--compose page--compose--edit ${selectedId === 'page8' ? 'page--compose--edit--page8' : ''}" data-compose-stage="edit">
       <header class="page-header page-header--with-back page-header--compose">
-        <button class="button button--ghost page-back" type="button" data-compose-stage-nav="select">Back</button>
+        <div class="page-header__actions page-header__actions--compose">
+          ${renderComposeBackButton('data-compose-stage-nav="select"')}
+          ${selectedId === 'page8' ? renderComposeAddPopoverButton() : ''}
+          ${selectedId === 'page8' ? renderComposeDeleteButton() : ''}
+          ${selectedId === 'page8' ? renderComposeTagsButton(isEditing) : ''}
+        </div>
         <div>
           <p class="page-header__mini">${headerMini}</p>
           <h2 class="page-header__title">${headerTitle}</h2>
@@ -263,17 +339,16 @@ function renderEditorScreen({ values, selectedId, selectedBackground, isEditing,
           <section class="compose-preview compose-preview--editor ${selectedId === 'page8' ? 'compose-preview--page8' : ''}">
             ${selectedId === 'page8'
               ? `
-                <div class="compose-pretext-host-shell compose-pretext-host-shell--page8">
-                  <div class="compose-pretext-host" data-compose-pretext-host></div>
-                </div>
+                <div class="compose-pretext-host compose-pretext-host--page8" data-compose-pretext-host></div>
               `
               : renderComposeSheet(values, selectedId, selectedBackground, { editable: true, interactiveSlots: true })}
           </section>
         </section>
-        <div class="compose-flow-actions">
-          <button class="button button--ghost compose-stage-back" type="button" data-compose-stage-nav="select">Template</button>
-          <button class="button button--primary compose-submit-button ${selectedId === 'page8' ? 'compose-submit-button--page8' : ''}" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'タグへ進む'}</button>
-        </div>
+        ${selectedId === 'page8' ? '' : `
+          <div class="compose-flow-actions compose-flow-actions--editor">
+            <button class="button button--primary compose-submit-button" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'タグへ進む'}</button>
+          </div>
+        `}
         <section class="compose-custom-tools" data-custom-template-controls hidden ${selectedId === 'page8' ? 'style="display:none"' : ''}>
           <div class="compose-custom-tools__header">
             <p class="compose-custom-tools__eyebrow">Pretext-inspired editorial controls</p>
@@ -295,7 +370,7 @@ function renderTagScreen({ selectedId, selectedBackground, selectedFixedTags, fr
   return `
     <section class="page page--compose page--compose--tags" data-compose-stage="tags">
       <header class="page-header page-header--with-back page-header--compose">
-        <button class="button button--ghost page-back" type="button" data-compose-stage-nav="edit">Back</button>
+        ${renderComposeBackButton('data-compose-stage-nav="edit"')}
         <div>
           <p class="page-header__mini">${headerMini}</p>
           <h2 class="page-header__title">${headerTitle}</h2>

@@ -4,7 +4,7 @@
 
 .page--compose--edit {
   height: calc(100dvh - 36px);
-  overflow: hidden;
+  overflow: auto;
   grid-template-rows: auto minmax(0, 1fr);
   padding: 8px 0 0;
   background:
@@ -21,8 +21,9 @@
 .compose-form--edit {
   height: 100%;
   min-height: 0;
-  overflow: hidden;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  overflow: visible;
+  grid-template-rows: minmax(360px, 1fr) auto auto;
+  gap: 8px;
 }
 
 .compose-form--tags {
@@ -76,6 +77,140 @@
   padding: 0 4px;
 }
 
+.page-header__actions--compose {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.page-back--icon {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  border-color: rgba(168, 203, 232, 0.72);
+  background: linear-gradient(180deg, rgba(36, 42, 54, 0.92), rgba(22, 28, 37, 0.96));
+  color: #f6fbff;
+  box-shadow: 0 14px 30px rgba(16, 20, 28, 0.28);
+}
+
+.page-back--icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.compose-add-button {
+  position: relative;
+}
+
+.compose-header-tags-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.compose-header-add {
+  position: relative;
+}
+
+.compose-header-add__popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0;
+  right: auto;
+  width: min(260px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(168, 203, 232, 0.42);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(25, 30, 38, 0.98), rgba(16, 20, 27, 0.96));
+  color: #f6fbff;
+  box-shadow: 0 22px 42px rgba(10, 13, 18, 0.32);
+  z-index: 9;
+}
+
+.compose-header-add__popover[hidden] {
+  display: none;
+}
+
+.compose-header-add__row {
+  display: grid;
+  gap: 8px;
+}
+
+.compose-header-add__row--image {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.compose-header-add__label {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(232, 239, 247, 0.72);
+}
+
+.compose-header-add__align {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.compose-header-add__option,
+.compose-header-add__image {
+  border: 1px solid rgba(168, 203, 232, 0.28);
+  border-radius: 16px;
+  background: rgba(244, 248, 255, 0.06);
+  color: #f6fbff;
+}
+
+.compose-header-add__option {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+}
+
+.compose-header-add__image {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  width: 100%;
+}
+
+.compose-header-add__option:hover,
+.compose-header-add__option:focus-visible,
+.compose-header-add__image:hover,
+.compose-header-add__image:focus-visible {
+  border-color: rgba(198, 228, 255, 0.64);
+  background: rgba(244, 248, 255, 0.14);
+}
+
+.compose-header-add__option svg,
+.compose-header-add__image svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-width: 420px) {
+  .compose-header-add__popover {
+    left: -54px;
+  }
+
+  .compose-header-add__row--image {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .compose-preview-toggle {
   min-height: 40px;
   border-radius: 999px;
@@ -110,9 +245,32 @@
 }
 
 .compose-preview--editor {
-  min-height: 0;
-  padding: 22px;
+  min-height: min(52dvh, 680px);
+  padding: 24px 22px 42px;
   overflow: hidden;
+}
+
+.page--compose--edit--page8 .compose-form--edit {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.page--compose--edit--page8 .compose-preview--editor {
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.page--compose--edit--page8 .compose-flow-actions--editor {
+  display: none;
+}
+
+.page--compose--edit .page-header--compose {
+  justify-content: flex-start;
+  padding: 0 14px;
+  margin-bottom: -12px;
+  position: relative;
+  z-index: 5;
 }
 
 .compose-sheet {
@@ -231,6 +389,8 @@
 }
 
 .app-shell--theme-dark .compose-custom-tools__buttons .button,
+.app-shell--theme-dark .compose-custom-add-popover,
+.app-shell--theme-dark .compose-custom-add-popover__option,
 .app-shell--theme-dark .compose-custom-inspector,
 .app-shell--theme-dark .compose-custom-inspector__textarea,
 .app-shell--theme-dark .compose-custom-inspector__segmented button,
@@ -446,6 +606,16 @@
   overflow: auto;
 }
 
+.page--compose--edit .compose-custom-tools {
+  margin-top: -10px;
+  padding: 22px 20px 20px;
+  border-radius: 30px 30px 0 0;
+  min-height: 220px;
+  max-height: min(30dvh, 320px);
+  position: relative;
+  z-index: 3;
+}
+
 .compose-custom-tools__header {
   display: grid;
   gap: 4px;
@@ -472,6 +642,54 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.compose-custom-add-pop {
+  position: relative;
+}
+
+.compose-custom-add-popover {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  display: grid;
+  grid-auto-flow: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(221, 200, 190, 0.92);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 32px rgba(31, 23, 20, 0.14);
+  z-index: 9;
+}
+
+.compose-custom-add-popover[hidden] {
+  display: none;
+}
+
+.compose-custom-add-popover__option {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(223, 202, 191, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1b1512;
+  display: grid;
+  place-items: center;
+}
+
+.compose-custom-add-popover__option:hover,
+.compose-custom-add-popover__option:focus-visible {
+  border-color: rgba(198, 124, 101, 0.54);
+  background: linear-gradient(180deg, rgba(255, 235, 226, 0.92), rgba(248, 220, 209, 0.86));
+  color: #8f4f39;
+}
+
+.compose-custom-add-popover__option svg,
+.compose-custom-inspector__segmented--align button svg {
+  width: 18px;
+  height: 18px;
 }
 
 .compose-custom-tools__buttons .button {
@@ -582,6 +800,11 @@
   color: #8f4f39;
 }
 
+.compose-custom-inspector__segmented--align button {
+  display: grid;
+  place-items: center;
+}
+
 .compose-custom-inspector__meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -606,6 +829,14 @@
   align-items: end;
 }
 
+.compose-flow-actions--editor {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: end;
+  margin: -10px 18px 0;
+  position: relative;
+  z-index: 4;
+}
+
 .compose-submit-button {
   min-height: 48px;
   border-radius: 18px;
@@ -614,6 +845,10 @@
   align-self: end;
   position: sticky;
   bottom: 0;
+}
+
+.compose-flow-actions--editor .compose-submit-button {
+  min-width: min(100%, 220px);
 }
 
 .compose-form--pretext {
@@ -633,39 +868,34 @@
 
 .compose-editor--page8 {
   grid-template-columns: minmax(0, 1fr) 292px;
+  height: 100%;
 }
 
 .compose-preview--page8 {
   align-items: stretch;
-  padding: 12px;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
-.compose-pretext-host-shell {
-  min-height: 0;
-  padding: 12px;
-  border-radius: 32px;
-  background:
-    radial-gradient(circle at top left, rgba(93, 188, 255, 0.12), transparent 28%),
-    linear-gradient(180deg, rgba(17, 22, 31, 0.94), rgba(8, 11, 18, 0.96));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.28);
-  overflow: hidden;
-}
-
-.compose-pretext-host-shell--page8 {
+.compose-pretext-host--page8 {
   width: 100%;
   height: 100%;
-  min-height: min(72dvh, 860px);
+  min-height: 100%;
 }
 
 .compose-pretext-host {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.06), transparent 24%),
-    linear-gradient(180deg, rgba(13, 16, 21, 0.98), rgba(8, 10, 15, 0.98));
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
 }
@@ -676,7 +906,7 @@
 }
 
 .compose-pretext-host .app-shell {
-  padding: 18px;
+  padding: 0;
   background: transparent;
 }
 
@@ -700,7 +930,7 @@
 
 .compose-pretext-host .workspace {
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
+  gap: 0;
 }
 
 .compose-pretext-host .workspace > .canvas-area {
@@ -710,8 +940,16 @@
 .compose-pretext-host .canvas-area {
   min-height: 0;
   height: 100%;
-  padding: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   overscroll-behavior: contain;
+}
+
+.compose-pretext-host .canvas-area--embedded {
+  min-height: 100%;
 }
 
 .compose-tag-stage {
@@ -2059,6 +2297,29 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .page-header--compose {
+    padding: 2px 0 0;
+  }
+
+  .page-header__actions--compose {
+    width: 100%;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .page-back--icon {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+
+  .compose-header-tags-button {
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
   .compose-select-shell,
   .compose-editor,
   .compose-sidebar {
@@ -2069,6 +2330,11 @@
   .compose-group,
   .compose-disclosure__panel {
     padding: 14px;
+  }
+
+  .compose-group--template {
+    width: 100%;
+    min-width: 0;
   }
 
   .compose-sheet {
@@ -2082,7 +2348,9 @@
   }
 
   .color-picker-inline {
-    justify-content: flex-end;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .template-thumb-track {
@@ -2097,6 +2365,21 @@
     max-width: 100%;
   }
 
+  .compose-group__head--template,
+  .compose-group__head--template-select {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .compose-confirm-button {
+    width: 100%;
+  }
+
+  .template-carousel {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .template-carousel__nav {
     display: none;
   }
@@ -2107,13 +2390,13 @@
     width: min(100vw - 28px, 360px);
   }
 
-  .compose-pretext-host-shell {
-    padding: 8px;
-    border-radius: 24px;
+  .compose-pretext-host {
+    padding: 0;
+    border-radius: 0;
   }
 
   .compose-pretext-host .app-shell {
-    padding: 12px;
+    padding: 0;
   }
 
   .compose-pretext-host .workspace {
@@ -2121,7 +2404,7 @@
   }
 
   .compose-pretext-host .canvas-area {
-    padding: 20px;
+    padding: 0;
   }
 
   .compose-editor--page8 {
@@ -2129,11 +2412,11 @@
   }
 
   .compose-preview--page8 {
-    padding: 8px;
+    padding: 0;
   }
 
-  .compose-pretext-host-shell--page8 {
-    min-height: min(60dvh, 560px);
+  .compose-pretext-host--page8 {
+    min-height: 100%;
   }
 
   .compose-pretext-submit {
@@ -2151,5 +2434,14 @@
 
   .compose-flow-actions {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compose-flow-actions--editor {
+    margin: -14px 0 0;
+  }
+
+  .page--compose--edit .compose-custom-tools {
+    min-height: clamp(320px, 44dvh, 480px);
+    padding-top: 24px;
   }
 }

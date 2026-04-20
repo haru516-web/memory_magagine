@@ -502,31 +502,11 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
     targetCtx.restore();
   }
 
-  function drawFinalWord(alpha = 1) {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.drawImage(wordCanvas, 0, 0);
-    ctx.restore();
-  }
-
   function drawRippleWord(alpha = 1, progress = 0) {
     const centerY = height * 0.5;
-    const phase = progress * Math.PI * 0.9;
-    const rippleStrength = finalFontSize * 0.018 * (1 - (progress * 0.32));
-    const driftX = Math.sin(phase * 0.82) * rippleStrength * 0.55;
-    const driftY = Math.cos(phase * 0.68) * rippleStrength * 0.42;
-    const scale = 1 + (Math.sin(progress * Math.PI * 0.8) * 0.004);
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate((width / 2) + driftX, centerY + driftY);
-    ctx.scale(scale, scale);
-    ctx.drawImage(wordCanvas, -width / 2, -height * 0.5);
-    ctx.restore();
-
-    ctx.save();
     const maxRadius = Math.hypot(width, height);
     const minRadius = finalFontSize * 0.42;
+    ctx.save();
     ctx.lineWidth = Math.max(1 * ratio, finalFontSize * 0.008);
     for (let ring = 0; ring < 3; ring += 1) {
       const ringProgress = clamp((progress * 0.56) - (ring * 0.18), 0, 1);
@@ -586,10 +566,6 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
       alpha: 0.72 + Math.random() * 0.18,
       width: glyphWidth,
     };
-  });
-
-  logoText.forEach((glyph, index) => {
-    drawWordmarkGlyph(wordCtx, glyph, logoGlyphs[index].targetX, wordCenterY);
   });
 
   const streamLetters = [];
@@ -654,8 +630,9 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
     const revealProgress = easeInOutCubic(getPhaseProgress(elapsed, flowDuration + settleDuration, revealDuration));
     const fadeStreamsProgress = getPhaseProgress(elapsed, flowDuration + (settleDuration * 0.3), revealDuration);
     const disperseProgress = easeInOutCubic(
-      getPhaseProgress(elapsed, flowDuration + settleDuration + revealDuration + holdDuration, disperseDuration),
+      getPhaseProgress(elapsed, flowDuration + settleDuration + revealDuration + (holdDuration * 0.35), disperseDuration),
     );
+    const dissolveFade = Math.max(0, 1 - (disperseProgress ** 2.1));
 
     ctx.clearRect(0, 0, width, height);
     ctx.textAlign = 'center';
@@ -670,10 +647,11 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
 
       const travel = easeOutCubic(localProgress);
       const arcStrength = (1 - travel) * glyph.enterArc;
-      const x = lerp(glyph.startX, glyph.targetX, travel) + (glyph.driftX * (1 - travel));
-      const y = lerp(glyph.startY, glyph.targetY, travel) + Math.sin((travel * Math.PI) + (index * 0.35)) * arcStrength + (glyph.driftY * (1 - travel));
-      const assemblyFade = 1 - clamp((revealProgress - 0.24) / 0.76, 0, 1);
-      const alpha = Math.min(0.96, (0.22 + (travel * glyph.alpha) + (settleProgress * 0.18))) * assemblyFade;
+      const settleDriftX = Math.sin((elapsed * 0.0016) + (index * 0.9)) * finalFontSize * 0.005 * settleProgress;
+      const settleDriftY = Math.cos((elapsed * 0.0012) + (index * 1.1)) * finalFontSize * 0.004 * settleProgress;
+      const x = lerp(glyph.startX, glyph.targetX, travel) + (glyph.driftX * (1 - travel)) + settleDriftX;
+      const y = lerp(glyph.startY, glyph.targetY, travel) + Math.sin((travel * Math.PI) + (index * 0.35)) * arcStrength + (glyph.driftY * (1 - travel)) + settleDriftY;
+      const alpha = Math.min(0.98, (0.22 + (travel * glyph.alpha) + (settleProgress * 0.18) + (revealProgress * 0.08))) * dissolveFade;
       if (alpha <= 0.02) return;
 
       ctx.save();
@@ -681,15 +659,10 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
       ctx.restore();
     });
 
-    ctx.globalAlpha = 1;
-    const revealAlpha = clamp((revealProgress - 0.18) / 0.82, 0, 1);
-    const dissolveFade = Math.max(0, 1 - (disperseProgress ** 2.1));
-    const wordAlpha = revealAlpha * dissolveFade;
     if (disperseProgress > 0.001) {
-      drawRippleWord(wordAlpha, disperseProgress);
-    } else {
-      drawFinalWord(wordAlpha);
+      drawRippleWord(dissolveFade, disperseProgress);
     }
+
     drawOrbitLetters(elapsed, Math.max(0, 1 - fadeStreamsProgress), 'front');
 
     if (elapsed < totalDuration) {
@@ -1516,6 +1489,34 @@ function bindComposeEvents() {
     });
   }
 
+  function createCustomTextBox(align = 'left') {
+    const nextText = findSafeTextPosition({
+      id: createCustomId('text'),
+      kind: 'body',
+      text: 'text',
+      isDefaultText: true,
+      x: 0.18,
+      y: 0.2,
+      width: 0.28,
+      height: 0.12,
+      fontSize: 0.026,
+      lineHeight: 1.45,
+      padding: 0.012,
+      align,
+      family: 'sans',
+      weight: 500,
+    }, [
+      ...customLayoutState.imageBoxes.map((item) => getCustomRect(item)),
+      ...customLayoutState.textBoxes.map((item) => getCustomRect(item)),
+    ]);
+    customLayoutState.textBoxes = [
+      ...customLayoutState.textBoxes,
+      clampCustomBoxRect(nextText, PAGE8_MIN_TEXT_SIZE),
+    ];
+    customLayoutState.selectedId = nextText.id;
+    renderCustomCanvas();
+  }
+
   function normalizeEditableContent(element) {
     if (element.dataset.singleLine === 'true') {
       element.innerText = element.innerText.replace(/\r?\n+/g, ' ');
@@ -2052,10 +2053,10 @@ function bindComposeEvents() {
       </label>
       <div class="compose-custom-inspector__field">
         <span>Align</span>
-        <div class="compose-custom-inspector__segmented">
-          <button type="button" data-custom-align="left" class="${record.item.align === 'left' ? 'is-active' : ''}">Left</button>
-          <button type="button" data-custom-align="center" class="${record.item.align === 'center' ? 'is-active' : ''}">Center</button>
-          <button type="button" data-custom-align="right" class="${record.item.align === 'right' ? 'is-active' : ''}">Right</button>
+        <div class="compose-custom-inspector__segmented compose-custom-inspector__segmented--align">
+          <button type="button" data-custom-align="left" class="${record.item.align === 'left' ? 'is-active' : ''}" aria-label="Align left">${getIcon('alignLeft')}</button>
+          <button type="button" data-custom-align="center" class="${record.item.align === 'center' ? 'is-active' : ''}" aria-label="Align center">${getIcon('alignCenter')}</button>
+          <button type="button" data-custom-align="right" class="${record.item.align === 'right' ? 'is-active' : ''}" aria-label="Align right">${getIcon('alignRight')}</button>
         </div>
       </div>
       <div class="compose-custom-inspector__field">
@@ -2649,7 +2650,70 @@ function bindComposeEvents() {
 
   setPreviewMode(false);
 
+  const pretextAddToggle = document.querySelector('[data-pretext-add-toggle]');
+  const pretextAddPopover = document.querySelector('[data-pretext-add-popover]');
+  const pretextDeleteButton = document.querySelector('[data-pretext-delete]');
+
+  function closePretextAddPopover() {
+    if (!pretextAddToggle || !pretextAddPopover) return;
+    pretextAddPopover.hidden = true;
+    pretextAddToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  function openPretextAddPopover() {
+    if (!pretextAddToggle || !pretextAddPopover) return;
+    pretextAddPopover.hidden = false;
+    pretextAddToggle.setAttribute('aria-expanded', 'true');
+  }
+
   if (pretextComposeHost) {
+    let pretextCommandId = 0;
+
+    pretextAddToggle?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!pretextAddPopover) return;
+      if (pretextAddPopover.hidden) {
+        openPretextAddPopover();
+      } else {
+        closePretextAddPopover();
+      }
+    });
+
+    pretextAddPopover?.querySelectorAll('[data-pretext-add-kind]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const kind = button.dataset.pretextAddKind;
+        if (!kind) return;
+        pretextCommandId += 1;
+        activeComposeBridge?.sendCommand?.({
+          id: pretextCommandId,
+          type: 'add',
+          kind,
+          align: button.dataset.pretextAddAlign || 'left',
+        });
+        closePretextAddPopover();
+      });
+    });
+
+    pretextDeleteButton?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      pretextCommandId += 1;
+      activeComposeBridge?.sendCommand?.({
+        id: pretextCommandId,
+        type: 'delete-selected',
+      });
+      closePretextAddPopover();
+    });
+
+    composeRoot.addEventListener('pointerdown', (event) => {
+      if (!pretextAddPopover || pretextAddPopover.hidden) return;
+      if (pretextAddToggle?.contains(event.target) || pretextAddPopover.contains(event.target)) return;
+      closePretextAddPopover();
+    });
+
     import('../../src/pretextComposeBridge.jsx')
       .then(({ mountComposePretextEditor }) => {
         if (!pretextComposeHost.isConnected) return;
@@ -2665,12 +2729,57 @@ function bindComposeEvents() {
     return;
   }
 
+  const textAddButton = composeRoot.querySelector('[data-custom-add="text"]');
+  let textAddWrapper = textAddButton?.closest('[data-custom-add-pop]') || null;
+  let textAddPopover = textAddWrapper?.querySelector('[data-custom-add-popover]') || null;
+
+  if (textAddButton && !textAddWrapper) {
+    textAddWrapper = document.createElement('div');
+    textAddWrapper.className = 'compose-custom-add-pop';
+    textAddButton.parentElement?.insertBefore(textAddWrapper, textAddButton);
+    textAddWrapper.appendChild(textAddButton);
+  }
+
+  if (textAddButton && textAddWrapper && !textAddPopover) {
+    textAddWrapper.insertAdjacentHTML('afterbegin', `
+      <div class="compose-custom-add-popover" data-custom-add-popover hidden>
+        <button class="compose-custom-add-popover__option" type="button" data-custom-add-text-align="left" aria-label="Add left aligned text box">
+          ${getIcon('alignLeft')}
+        </button>
+        <button class="compose-custom-add-popover__option" type="button" data-custom-add-text-align="center" aria-label="Add centered text box">
+          ${getIcon('alignCenter')}
+        </button>
+        <button class="compose-custom-add-popover__option" type="button" data-custom-add-text-align="right" aria-label="Add right aligned text box">
+          ${getIcon('alignRight')}
+        </button>
+      </div>
+    `);
+    textAddPopover = textAddWrapper.querySelector('[data-custom-add-popover]');
+    textAddButton.setAttribute('aria-haspopup', 'true');
+    textAddButton.setAttribute('aria-expanded', 'false');
+  }
+
+  function closeTextAddPopover() {
+    if (!textAddPopover || !textAddButton) return;
+    textAddPopover.hidden = true;
+    textAddWrapper?.classList.remove('is-open');
+    textAddButton.setAttribute('aria-expanded', 'false');
+  }
+
+  function openTextAddPopover() {
+    if (!textAddPopover || !textAddButton) return;
+    textAddPopover.hidden = false;
+    textAddWrapper?.classList.add('is-open');
+    textAddButton.setAttribute('aria-expanded', 'true');
+  }
+
   composeRoot.querySelectorAll('[data-custom-add]').forEach((button) => {
     button.addEventListener('click', (event) => {
       event.preventDefault();
       const action = button.dataset.customAdd;
       if (composeSheet?.dataset.template !== 'page8') return;
       if (action === 'image') {
+        closeTextAddPopover();
         const nextImage = {
           id: createCustomId('image'),
           x: 0.14,
@@ -2689,32 +2798,28 @@ function bindComposeEvents() {
         return;
       }
 
-      const nextText = findSafeTextPosition({
-        id: createCustomId('text'),
-        kind: 'body',
-        text: 'text',
-        isDefaultText: true,
-        x: 0.18,
-        y: 0.2,
-        width: 0.28,
-        height: 0.12,
-        fontSize: 0.026,
-        lineHeight: 1.45,
-        padding: 0.012,
-        align: 'left',
-        family: 'sans',
-        weight: 500,
-      }, [
-        ...customLayoutState.imageBoxes.map((item) => getCustomRect(item)),
-        ...customLayoutState.textBoxes.map((item) => getCustomRect(item)),
-      ]);
-      customLayoutState.textBoxes = [
-        ...customLayoutState.textBoxes,
-        clampCustomBoxRect(nextText, PAGE8_MIN_TEXT_SIZE),
-      ];
-      customLayoutState.selectedId = nextText.id;
-      renderCustomCanvas();
+      if (!textAddPopover) return;
+      if (textAddPopover.hidden) {
+        openTextAddPopover();
+      } else {
+        closeTextAddPopover();
+      }
     });
+  });
+
+  textAddPopover?.querySelectorAll('[data-custom-add-text-align]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (composeSheet?.dataset.template !== 'page8') return;
+      createCustomTextBox(button.dataset.customAddTextAlign || 'left');
+      closeTextAddPopover();
+    });
+  });
+
+  composeRoot.addEventListener('pointerdown', (event) => {
+    if (!textAddPopover || textAddPopover.hidden) return;
+    if (textAddWrapper?.contains(event.target)) return;
+    closeTextAddPopover();
   });
 
   [

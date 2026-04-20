@@ -57,6 +57,15 @@ export function mountComposePretextEditor(container, options = {}) {
       window.removeEventListener('message', handleMessage);
       frame.remove();
     },
+    sendCommand(command) {
+      frame.contentWindow?.postMessage(
+        {
+          type: 'memories:pretext:command',
+          command,
+        },
+        getTargetOrigin(),
+      );
+    },
     getBoxes() {
       return latestBoxes;
     },

@@ -18,6 +18,7 @@ function isAcceptedMessageOrigin(origin) {
 function EmbeddedPretextPage() {
   const [initialBoxes, setInitialBoxes] = useState(null);
   const [editorKey, setEditorKey] = useState(0);
+  const [externalCommand, setExternalCommand] = useState(null);
 
   useEffect(() => {
     const handleMessage = (event) => {
@@ -27,6 +28,10 @@ function EmbeddedPretextPage() {
       if (payload.type === 'memories:pretext:init' && Array.isArray(payload.boxes)) {
         setInitialBoxes(payload.boxes);
         setEditorKey((value) => value + 1);
+        return;
+      }
+      if (payload.type === 'memories:pretext:command' && payload.command && typeof payload.command === 'object') {
+        setExternalCommand(payload.command);
       }
     };
 
@@ -43,6 +48,7 @@ function EmbeddedPretextPage() {
       key={editorKey}
       embedded
       initialBoxes={initialBoxes ?? undefined}
+      externalCommand={externalCommand}
       onBoxesChange={(boxes) => {
         window.parent?.postMessage({ type: 'memories:pretext:change', boxes }, getTargetOrigin());
       }}

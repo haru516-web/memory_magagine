@@ -15,7 +15,7 @@ function maxZ(boxes: EditorBox[]) {
   return boxes.reduce((max, box) => Math.max(max, box.zIndex), 0)
 }
 
-function createTitleBox(zIndex: number): TextBox {
+function createTitleBox(zIndex: number, align: TextBox['data']['align'] = 'left'): TextBox {
   return {
     id: uid(),
     kind: 'title',
@@ -35,12 +35,12 @@ function createTitleBox(zIndex: number): TextBox {
       letterSpacing: 0,
       padding: 12,
       color: '#111111',
-      align: 'left',
+      align,
     },
   }
 }
 
-function createBodyBox(zIndex: number): TextBox {
+function createBodyBox(zIndex: number, align: TextBox['data']['align'] = 'left'): TextBox {
   return {
     id: uid(),
     kind: 'body',
@@ -60,7 +60,7 @@ function createBodyBox(zIndex: number): TextBox {
       letterSpacing: 0,
       padding: 14,
       color: '#121212',
-      align: 'left',
+      align,
     },
   }
 }
@@ -97,6 +97,18 @@ type AppProps = {
   initialBoxes?: EditorBox[]
   onBoxesChange?: (boxes: EditorBox[]) => void
   onImageUploadTransform?: (file: File) => Promise<string>
+  externalCommand?: (
+    | {
+        id: number
+        type: 'add'
+        kind: 'title' | 'body' | 'image'
+        align?: TextBox['data']['align']
+      }
+    | {
+        id: number
+        type: 'delete-selected'
+      }
+  ) | null
 }
 
 function cloneEditorBox(box: EditorBox): EditorBox {
@@ -132,7 +144,7 @@ function handlePositions() {
   ] as ResizeHandle[]
 }
 
-export default function App({ embedded = false, initialBoxes, onBoxesChange, onImageUploadTransform }: AppProps = {}) {
+export default function App({ embedded = false, initialBoxes, onBoxesChange, onImageUploadTransform, externalCommand = null }: AppProps = {}) {
   const [boxes, setBoxes] = useState<EditorBox[]>(() => initialBoxes ?? createInitialBoxes())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [dragMode, setDragMode] = useState<DragMode>({ type: 'idle' })
@@ -149,6 +161,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
   const lastTextTapRef = useRef<{ id: string, time: number } | null>(null)
   const activePointerTargetRef = useRef<HTMLElement | null>(null)
   const activePointerIdRef = useRef<number | null>(null)
+  const handledExternalCommandIdRef = useRef<number | null>(null)
 
   const selected = useMemo(() => boxes.find((box) => box.id === selectedId) ?? null, [boxes, selectedId])
 
@@ -171,10 +184,14 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
     setBoxes((prev) => bringToFront(id, prev))
   }
 
-  const addBox = (kind: 'title' | 'body' | 'image') => {
+  const addBox = (kind: 'title' | 'body' | 'image', options?: { align?: TextBox['data']['align'] }) => {
     setBoxes((prev) => {
       const z = maxZ(prev) + 1
-      const nextBox = kind === 'title' ? createTitleBox(z) : kind === 'body' ? createBodyBox(z) : createImageBox(z)
+      const nextBox = kind === 'title'
+        ? createTitleBox(z, options?.align ?? 'left')
+        : kind === 'body'
+          ? createBodyBox(z, options?.align ?? 'left')
+          : createImageBox(z)
       const next = normalizeBoxes([...prev, nextBox], nextBox.id)
       setSelectedId(nextBox.id)
       return next
@@ -224,7 +241,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
               fontSize: kind === 'title' ? Math.max(38, box.data.fontSize) : Math.min(24, box.data.fontSize),
               fontWeight: kind === 'title' ? 700 : 400,
               lineHeight: kind === 'title' ? Math.max(44, box.data.lineHeight) : Math.min(36, box.data.lineHeight),
-              align: kind === 'title' ? 'left' : box.data.align,
+              align: box.data.align,
             },
           }
         }),
@@ -437,6 +454,21 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
   }, [boxes, onBoxesChange])
 
   useEffect(() => {
+    if (!externalCommand) return
+    if (handledExternalCommandIdRef.current === externalCommand.id) return
+    handledExternalCommandIdRef.current = externalCommand.id
+
+    if (externalCommand.type === 'add') {
+      addBox(externalCommand.kind, { align: externalCommand.align })
+      return
+    }
+
+    if (externalCommand.type === 'delete-selected') {
+      deleteSelected()
+    }
+  }, [externalCommand])
+
+  useEffect(() => {
     if (!embedded) {
       setEmbeddedScale(1)
       return
@@ -448,10 +480,9 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
     const updateScale = () => {
       const styles = window.getComputedStyle(container)
       const paddingX = Number.parseFloat(styles.paddingLeft || '0') + Number.parseFloat(styles.paddingRight || '0')
-      const paddingY = Number.parseFloat(styles.paddingTop || '0') + Number.parseFloat(styles.paddingBottom || '0')
       const availableWidth = Math.max(1, container.clientWidth - paddingX)
-      const availableHeight = Math.max(1, container.clientHeight - paddingY)
-      const nextScale = Math.min(1, availableWidth / PAGE_WIDTH, availableHeight / PAGE_HEIGHT)
+      const widthFitScale = availableWidth / PAGE_WIDTH
+      const nextScale = Math.min(1, widthFitScale * 1.06)
       setEmbeddedScale(nextScale)
     }
 
@@ -467,7 +498,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
   }, [embedded])
 
   useEffect(() => {
-    if (!embedded || selected?.kind !== 'image') return
+    if (!embedded || !selected) return
     const container = canvasAreaRef.current
     const target = container?.querySelector<HTMLElement>(`[data-editor-box-id="${selected.id}"]`)
     if (!container || !target) return
@@ -491,40 +522,24 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [embedded, selected?.id, selected?.kind])
+  }, [embedded, selected?.id])
 
   const renderedBoxes = useMemo(() => sortByZ(boxes), [boxes])
 
   return (
     <div className={`app-shell ${embedded ? 'app-shell--embedded' : ''}`}>
-      {embedded ? (
-        <div className="compose-pretext-toolbar">
-          <Toolbar
-            onAddTitle={() => addBox('title')}
-            onAddBody={() => addBox('body')}
-            onAddImage={() => addBox('image')}
-            onDelete={deleteSelected}
-            canDelete={Boolean(selectedId)}
-            cropMode={cropMode}
-            canCrop={selected?.kind === 'image'}
-            onToggleCropMode={() => setCropMode((value) => !value)}
-          />
-        </div>
-      ) : (
+      {embedded ? null : (
         <div className="chrome-bar">
           <div>
             <div className="chrome-bar__eyebrow">A4 / movable boxes / auto reflow</div>
             <h1 className="chrome-bar__title">Magazine Post Composer</h1>
           </div>
           <Toolbar
-            onAddTitle={() => addBox('title')}
-            onAddBody={() => addBox('body')}
+            onAddTitle={(align) => addBox('title', { align })}
+            onAddBody={(align) => addBox('body', { align })}
             onAddImage={() => addBox('image')}
             onDelete={deleteSelected}
             canDelete={Boolean(selectedId)}
-            cropMode={cropMode}
-            canCrop={selected?.kind === 'image'}
-            onToggleCropMode={() => setCropMode((value) => !value)}
           />
         </div>
       )}
@@ -538,33 +553,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
           style={{ display: 'none' }}
         />
         {embedded
-          ? (selected && selected.kind !== 'image' ? (
-            <section className="compose-pretext-textbar">
-              <div className="segmented-control compose-pretext-textbar__align compose-pretext-textbar__align--solo">
-                <button
-                  type="button"
-                  className={selected.data.align === 'left' ? 'is-active' : ''}
-                  onClick={() => updateSelectedText({ align: 'left' })}
-                >
-                  Left
-                </button>
-                <button
-                  type="button"
-                  className={selected.data.align === 'center' ? 'is-active' : ''}
-                  onClick={() => updateSelectedText({ align: 'center' })}
-                >
-                  Center
-                </button>
-                <button
-                  type="button"
-                  className={selected.data.align === 'right' ? 'is-active' : ''}
-                  onClick={() => updateSelectedText({ align: 'right' })}
-                >
-                  Right
-                </button>
-              </div>
-            </section>
-            ) : null)
+          ? null
           : (
             <Inspector
               selected={selected}

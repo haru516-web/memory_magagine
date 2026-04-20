@@ -93,6 +93,18 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.screen-area--compose {
+  overflow-y: auto;
+  overflow-x: clip;
+  padding:
+    18px
+    max(16px, calc(env(safe-area-inset-right) + 14px))
+    24px
+    max(16px, calc(env(safe-area-inset-left) + 14px));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .page {
   display: grid;
   gap: 18px;
@@ -105,6 +117,10 @@
 }
 
 .page-header:not(.page-header--with-back) {
+  display: none;
+}
+
+.page-header--with-back > :not(.page-back):not(.page-header__actions) {
   display: none;
 }
 
