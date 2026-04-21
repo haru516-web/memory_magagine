@@ -47,6 +47,12 @@
   background: var(--shell-bg);
 }
 
+.app-shell--compose {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .app-shell--theme-mode-system {
   background:
     linear-gradient(180deg, rgba(3, 14, 30, 0.98), rgba(5, 20, 42, 0.98)),
@@ -94,15 +100,13 @@
 }
 
 .screen-area--compose {
-  overflow-y: auto;
-  overflow-x: clip;
+  min-height: auto;
+  overflow: visible;
   padding:
     18px
     max(16px, calc(env(safe-area-inset-right) + 14px))
     24px
     max(16px, calc(env(safe-area-inset-left) + 14px));
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
 }
 
 .page {

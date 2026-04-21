@@ -31,7 +31,7 @@ const uiState = {
   timelinePan: { x: -360, y: -220 },
   searchQuery: '',
   searchTags: [],
-  homeTheme: 'dark',
+  homeTheme: 'light',
   homeCoreState: 'default',
   homeCoreTapTimestamps: [],
   previewPostId: null,
@@ -250,7 +250,7 @@ function render() {
   if (!app) return;
   cleanupComposeBridge();
   if (uiState.screen === 'opening') {
-    app.innerHTML = renderOpening();
+    app.innerHTML = renderOpening(renderHome(getState(), uiState));
     bindOpeningEvents();
     return;
   }
@@ -405,6 +405,151 @@ function closePostDetail() {
   render();
 }
 
+function loadOpeningImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load opening asset: ${src}`));
+    image.src = src;
+  });
+}
+
+function createOpeningLogoSprite(logoImage) {
+  const sourceWidth = logoImage.naturalWidth || logoImage.width;
+  const sourceHeight = logoImage.naturalHeight || logoImage.height;
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = sourceWidth;
+  sourceCanvas.height = sourceHeight;
+  const sourceCtx = sourceCanvas.getContext('2d');
+  if (!sourceCtx) return null;
+
+  sourceCtx.drawImage(logoImage, 0, 0, sourceWidth, sourceHeight);
+  const imageData = sourceCtx.getImageData(0, 0, sourceWidth, sourceHeight);
+  const pixels = imageData.data;
+  let minX = sourceWidth;
+  let minY = sourceHeight;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    const r = pixels[index];
+    const g = pixels[index + 1];
+    const b = pixels[index + 2];
+    const sourceAlpha = pixels[index + 3] / 255;
+    const luminance = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+    const glowAlpha = Math.max(0, Math.min(1, (luminance - 108) / 110)) * sourceAlpha;
+    const coreAlpha = Math.max(0, Math.min(1, (luminance - 184) / 42)) * sourceAlpha;
+    const outputAlpha = Math.max(glowAlpha * 0.8, coreAlpha);
+
+    pixels[index] = 255;
+    pixels[index + 1] = 255;
+    pixels[index + 2] = 255;
+    pixels[index + 3] = Math.round(outputAlpha * 255);
+
+    if (outputAlpha > 0.03) {
+      const pixelIndex = index / 4;
+      const x = pixelIndex % sourceWidth;
+      const y = Math.floor(pixelIndex / sourceWidth);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return {
+      canvas: sourceCanvas,
+      width: sourceWidth,
+      height: sourceHeight,
+    };
+  }
+
+  sourceCtx.putImageData(imageData, 0, 0);
+  const padding = Math.max(8, Math.round(Math.min(sourceWidth, sourceHeight) * 0.03));
+  const cropX = Math.max(0, minX - padding);
+  const cropY = Math.max(0, minY - padding);
+  const cropWidth = Math.min(sourceWidth - cropX, (maxX - minX) + (padding * 2) + 1);
+  const cropHeight = Math.min(sourceHeight - cropY, (maxY - minY) + (padding * 2) + 1);
+  const croppedCanvas = document.createElement('canvas');
+  croppedCanvas.width = cropWidth;
+  croppedCanvas.height = cropHeight;
+  const croppedCtx = croppedCanvas.getContext('2d');
+  if (!croppedCtx) return null;
+  croppedCtx.drawImage(sourceCanvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+  return {
+    canvas: croppedCanvas,
+    width: cropWidth,
+    height: cropHeight,
+  };
+}
+
+function createOpeningLogoSegments(logoSprite) {
+  const sourceCtx = logoSprite.canvas.getContext('2d');
+  if (!sourceCtx) return [];
+  const { width, height } = logoSprite.canvas;
+  const { data } = sourceCtx.getImageData(0, 0, width, height);
+  const activeColumns = Array.from({ length: width }, (_, x) => {
+    let activePixels = 0;
+    for (let y = 0; y < height; y += 1) {
+      if (data[((y * width) + x) * 4 + 3] > 110) {
+        activePixels += 1;
+      }
+    }
+    return activePixels > Math.max(2, Math.round(height * 0.04));
+  });
+
+  const groups = [];
+  let start = null;
+  for (let x = 0; x < activeColumns.length; x += 1) {
+    if (activeColumns[x] && start == null) {
+      start = x;
+    }
+    if ((!activeColumns[x] || x === activeColumns.length - 1) && start != null) {
+      const end = activeColumns[x] && x === activeColumns.length - 1 ? x : x - 1;
+      groups.push({ start, end });
+      start = null;
+    }
+  }
+
+  const resolvedGroups = groups.length === 4
+    ? groups
+    : [
+      { start: 0, end: Math.round(width * 0.25) },
+      { start: Math.round(width * 0.25), end: Math.round(width * 0.49) },
+      { start: Math.round(width * 0.49), end: Math.round(width * 0.73) },
+      { start: Math.round(width * 0.73), end: width - 1 },
+    ];
+
+  return resolvedGroups.map((group) => {
+    const segmentWidth = Math.max(1, (group.end - group.start) + 1);
+    const segmentCanvas = document.createElement('canvas');
+    segmentCanvas.width = segmentWidth;
+    segmentCanvas.height = height;
+    const segmentCtx = segmentCanvas.getContext('2d');
+    if (!segmentCtx) return null;
+    segmentCtx.drawImage(
+      logoSprite.canvas,
+      group.start,
+      0,
+      segmentWidth,
+      height,
+      0,
+      0,
+      segmentWidth,
+      height,
+    );
+    return {
+      canvas: segmentCanvas,
+      x: group.start,
+      width: segmentWidth,
+      height,
+    };
+  }).filter(Boolean);
+}
+
 async function bindOpeningEvents() {
   const canvas = document.getElementById('openingCanvas');
   const openingScreen = document.querySelector('.opening-screen');
@@ -420,6 +565,11 @@ async function bindOpeningEvents() {
   };
   openingScreen.addEventListener('pointerdown', skipOpening, { once: true });
 
+  const assetTask = Promise.all([
+    loadOpeningImage('image/background/okinawa.png'),
+    loadOpeningImage('image/logo/b439a9c7-433e-4123-91c2-7d9eb952c1b4.png'),
+  ]).catch(() => [null, null]);
+
   try {
     if (document.fonts?.ready) {
       await Promise.race([
@@ -432,11 +582,21 @@ async function bindOpeningEvents() {
   } catch {}
   if (sequenceId !== openingSequenceId) return;
 
+  let backgroundImage = null;
+  let logoImage = null;
+  try {
+    [backgroundImage, logoImage] = await Promise.race([
+      assetTask,
+      new Promise((resolve) => window.setTimeout(() => resolve([null, null]), 1600)),
+    ]);
+  } catch {}
+  if (sequenceId !== openingSequenceId) return;
+
   const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-  startOpeningSequence(canvas, sequenceId, prefersReducedMotion);
+  startOpeningSequence(canvas, openingScreen, sequenceId, prefersReducedMotion, { backgroundImage, logoImage });
 }
 
-function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
+function startOpeningSequence(canvas, openingScreen, sequenceId, prefersReducedMotion, openingAssets = {}) {
   const rect = canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
   const width = Math.max(1, Math.round(rect.width * ratio));
@@ -447,22 +607,42 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
   canvas.width = width;
   canvas.height = height;
 
-  const textColor = '#ffffff';
-  const serifFont = '"Zen Old Mincho", "Cormorant Garamond", "Times New Roman", serif';
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const finalFontSize = Math.min(width * 0.255, height * 0.5, 138 * ratio);
-  const finalFont = `700 ${finalFontSize}px ${serifFont}`;
-  const flowDuration = prefersReducedMotion ? 1300 : 3000;
+  const { backgroundImage, logoImage } = openingAssets;
+  const textColor = '#f7fbff';
+  const subtitleFont = '"Avenir Next", "Helvetica Neue", Arial, sans-serif';
+  const subtitleFontSize = Math.min(width * 0.038, 28 * ratio);
+  const subtitleLineHeight = subtitleFontSize * 1.24;
+  const secondarySubtitleFontSize = subtitleFontSize;
+  const secondarySubtitleLineHeight = subtitleLineHeight;
+  const flowDuration = prefersReducedMotion ? 1400 : 2800;
   const settleDuration = prefersReducedMotion ? 420 : 760;
-  const revealDuration = prefersReducedMotion ? 320 : 620;
-  const holdDuration = prefersReducedMotion ? 720 : 2100;
-  const disperseDuration = prefersReducedMotion ? 1800 : 5200;
-  const totalDuration = flowDuration + settleDuration + revealDuration + holdDuration + disperseDuration;
+  const revealDuration = prefersReducedMotion ? 300 : 560;
+  const holdDuration = prefersReducedMotion ? 760 : 1600;
+  const disperseDuration = prefersReducedMotion ? 900 : 1700;
+  const subtitleStartOffset = flowDuration * 0.62;
+  const secondarySubtitleStartOffset = subtitleStartOffset * 2;
+  const rippleStartOffset = flowDuration + settleDuration + revealDuration + (holdDuration * 1.08);
+  const rippleRingCount = 3;
+  const rippleRingSpacing = prefersReducedMotion ? 620 : 1280;
+  const rippleRingDuration = prefersReducedMotion ? 1480 : 3200;
+  const rippleEndOffset = rippleStartOffset
+    + rippleRingDuration
+    + ((rippleRingCount - 1) * rippleRingSpacing);
+  const secondRippleStartOffset = rippleStartOffset + rippleRingSpacing;
+  const disperseStartOffset = rippleEndOffset - disperseDuration;
+  const totalDuration = Math.max(
+    disperseStartOffset + disperseDuration,
+    rippleEndOffset,
+  );
+  const subtitleLines = [
+    'When the darkness, which ought to be devoid of color,',
+    'is vivid with color.',
+  ];
+  const secondarySubtitleText = 'There was a time when, with you beside me, the sky and the flowers appeared more beautiful than ever, and even the sound of falling rain felt boundlessly tender.';
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
   }
-  if (sequenceId !== openingSequenceId) return;
 
   function easeOutCubic(value) {
     return 1 - ((1 - value) ** 3);
@@ -482,188 +662,226 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
     return clamp((elapsed - offset) / duration, 0, 1);
   }
 
-  function drawWordmarkGlyph(targetCtx, glyph, x, y, alpha = 1) {
-    targetCtx.save();
-    targetCtx.globalAlpha = alpha;
-    targetCtx.font = finalFont;
-    targetCtx.textAlign = 'left';
-    targetCtx.textBaseline = 'middle';
-    targetCtx.lineJoin = 'round';
-    targetCtx.lineCap = 'round';
-    targetCtx.lineWidth = Math.max(1.4 * ratio, finalFontSize * 0.045);
-    targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
-    targetCtx.strokeText(glyph, x, y);
-
-    targetCtx.shadowColor = 'rgba(255, 255, 255, 0.26)';
-    targetCtx.shadowBlur = finalFontSize * 0.085;
-    targetCtx.shadowOffsetY = finalFontSize * 0.014;
-    targetCtx.fillStyle = textColor;
-    targetCtx.fillText(glyph, x, y);
-    targetCtx.restore();
+  function drawCoverImage(targetCtx, image, drawWidth, drawHeight, zoom = 1) {
+    if (!image) return;
+    const imageWidth = image.naturalWidth || image.width;
+    const imageHeight = image.naturalHeight || image.height;
+    if (!imageWidth || !imageHeight) return;
+    const coverScale = Math.max(drawWidth / imageWidth, drawHeight / imageHeight) * zoom;
+    const renderedWidth = imageWidth * coverScale;
+    const renderedHeight = imageHeight * coverScale;
+    const offsetX = (drawWidth - renderedWidth) / 2;
+    const offsetY = (drawHeight - renderedHeight) / 2;
+    targetCtx.drawImage(image, offsetX, offsetY, renderedWidth, renderedHeight);
   }
 
-  function drawRippleWord(alpha = 1, progress = 0) {
+  function drawRippleWord(targetCtx, alpha = 1, elapsedMs = 0) {
     const centerY = height * 0.5;
     const maxRadius = Math.hypot(width, height);
-    const minRadius = finalFontSize * 0.42;
-    ctx.save();
-    ctx.lineWidth = Math.max(1 * ratio, finalFontSize * 0.008);
-    for (let ring = 0; ring < 3; ring += 1) {
-      const ringProgress = clamp((progress * 0.56) - (ring * 0.18), 0, 1);
+    const minRadius = Math.min(width, height) * 0.08;
+    targetCtx.save();
+    targetCtx.lineWidth = Math.max(1 * ratio, Math.min(width, height) * 0.0038);
+    targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    for (let ring = 0; ring < rippleRingCount; ring += 1) {
+      const ringElapsed = elapsedMs - rippleStartOffset - (ring * rippleRingSpacing);
+      const ringProgress = clamp(ringElapsed / rippleRingDuration, 0, 1);
       if (ringProgress <= 0 || ringProgress >= 1) continue;
-      ctx.globalAlpha = ((1 - ringProgress) ** 1.4) * 0.12 * alpha;
-      ctx.strokeStyle = textColor;
-      ctx.beginPath();
-      ctx.arc(
+      targetCtx.globalAlpha = ((1 - ringProgress) ** 1.45) * 0.2 * alpha;
+      targetCtx.beginPath();
+      targetCtx.arc(
         width / 2,
         centerY,
         minRadius + (ringProgress * (maxRadius - minRadius)),
         0,
         Math.PI * 2,
       );
-      ctx.stroke();
+      targetCtx.stroke();
     }
-    ctx.restore();
+    targetCtx.restore();
   }
 
-  const wordCanvas = document.createElement('canvas');
-  wordCanvas.width = width;
-  wordCanvas.height = height;
-  const wordCtx = wordCanvas.getContext('2d');
-  if (!wordCtx) return;
-  const logoText = ['L', 'A', 'N', 'I'];
-  const logoSpacing = finalFontSize * 0.01;
-  const logoPairAdjustments = [-finalFontSize * 0.03, -finalFontSize * 0.015, -finalFontSize * 0.015];
-  wordCtx.font = finalFont;
-  const glyphWidths = logoText.map((glyph) => wordCtx.measureText(glyph).width);
-  const totalWordWidth = glyphWidths.reduce((sum, glyphWidth) => sum + glyphWidth, 0)
-    + (logoSpacing * (logoText.length - 1))
-    + logoPairAdjustments.reduce((sum, adjustment) => sum + adjustment, 0);
-  const wordStartX = (width / 2) - (totalWordWidth / 2);
-  const wordCenterY = height * 0.5;
-  wordCtx.fillStyle = textColor;
-  wordCtx.font = finalFont;
-  wordCtx.textAlign = 'left';
-  wordCtx.textBaseline = 'middle';
-  let logoCursorX = wordStartX;
-  const logoGlyphs = logoText.map((glyph, index) => {
-    const glyphWidth = glyphWidths[index];
-    const targetX = logoCursorX;
-    logoCursorX += glyphWidth + logoSpacing + (logoPairAdjustments[index] || 0);
-    const fromLeft = index < 2;
+  const logoSprite = logoImage ? createOpeningLogoSprite(logoImage) : null;
+  const baseLogoWidth = logoSprite?.width || 1;
+  const baseLogoHeight = logoSprite?.height || 1;
+  const logoScale = logoSprite
+    ? Math.min((width * 0.56) / baseLogoWidth, (height * 0.15) / baseLogoHeight)
+    : 1;
+  const logoRenderWidth = baseLogoWidth * logoScale;
+  const logoRenderHeight = baseLogoHeight * logoScale;
+  const logoOriginX = (width - logoRenderWidth) / 2;
+  const logoTop = height * 0.12;
+  const logoSegments = logoSprite
+    ? createOpeningLogoSegments(logoSprite)
+    : [];
+
+  const animatedLogoSegments = (logoSegments.length ? logoSegments : []).map((segment, index, array) => {
+    const targetWidth = segment.width * logoScale;
+    const targetHeight = segment.height * logoScale;
+    const targetX = logoOriginX + (segment.x * logoScale);
+    const targetY = logoTop;
+    const fromLeft = index < Math.ceil(array.length / 2);
     return {
-      glyph,
+      canvas: segment.canvas,
       targetX,
-      targetY: wordCenterY,
+      targetY,
+      targetWidth,
+      targetHeight,
       startX: fromLeft
-        ? -glyphWidth - (Math.random() * width * 0.16) - (index * finalFontSize * 0.18)
-        : width + (Math.random() * width * 0.16) + ((logoText.length - index) * finalFontSize * 0.18),
-      startY: wordCenterY + ((Math.random() - 0.5) * finalFontSize * 0.42),
-      driftX: (Math.random() - 0.5) * finalFontSize * 0.12,
-      driftY: (Math.random() - 0.5) * finalFontSize * 0.08,
-      enterArc: (Math.random() - 0.5) * finalFontSize * 0.32,
+        ? -targetWidth - (Math.random() * width * 0.14) - (index * targetWidth * 0.16)
+        : width + (Math.random() * width * 0.14) + ((array.length - index) * targetWidth * 0.16),
+      startY: targetY + ((Math.random() - 0.5) * targetHeight * 0.45),
+      driftX: (Math.random() - 0.5) * targetWidth * 0.12,
+      driftY: (Math.random() - 0.5) * targetHeight * 0.08,
+      enterArc: (Math.random() - 0.5) * targetHeight * 0.28,
       delay: index * 0.055,
-      alpha: 0.72 + Math.random() * 0.18,
-      width: glyphWidth,
+      alpha: 0.78 + Math.random() * 0.16,
     };
   });
 
-  const streamLetters = [];
-  const streamCount = prefersReducedMotion
-    ? Math.max(28, Math.round(width / 20))
-    : Math.max(120, Math.round(width / 5.5));
-  const orbitBaseRadiusX = (totalWordWidth * 0.52) + (finalFontSize * 0.16);
-  const orbitBaseRadiusY = (finalFontSize * 0.56);
+  const fallbackLogoMotion = {
+    startX: (width * 0.5) - (logoRenderWidth * 0.45),
+    startY: logoTop + (height * 0.04),
+    targetX: logoOriginX,
+    targetY: logoTop,
+  };
 
-  for (let index = 0; index < streamCount; index += 1) {
-    const orbitBand = index % 7;
-    const orbitScale = 0.86 + (orbitBand * 0.28) + (Math.random() * 0.14);
-    const direction = Math.random() < 0.5 ? 1 : -1;
-    const spreadBias = orbitBand >= 4 ? 1.35 : 1;
-    streamLetters.push({
-      glyph: alphabet[Math.floor(Math.random() * alphabet.length)],
-      size: (Math.max(width, height) * 0.024) + Math.random() * (Math.max(width, height) * 0.034),
-      angularSpeed: (prefersReducedMotion ? 0.00022 : 0.0004) * (0.82 + Math.random() * 0.72) * direction,
-      radiusX: Math.min((width * 0.64), orbitBaseRadiusX * orbitScale * spreadBias),
-      radiusY: Math.min((height * 0.42), orbitBaseRadiusY * (0.86 + (orbitBand * 0.2) + (Math.random() * 0.14)) * spreadBias),
-      wobble: finalFontSize * (0.03 + Math.random() * 0.05),
-      wobbleSpeed: 0.0012 + Math.random() * 0.0016,
-      alpha: prefersReducedMotion ? 0.16 + Math.random() * 0.1 : 0.24 + Math.random() * 0.18,
-      seed: Math.random() * Math.PI * 2,
-    });
-  }
+  const sceneCanvas = document.createElement('canvas');
+  sceneCanvas.width = width;
+  sceneCanvas.height = height;
+  const sceneCtx = sceneCanvas.getContext('2d');
+  if (!sceneCtx) return;
 
   const start = performance.now();
-
-  function drawOrbitLetters(elapsed, fadeAmount, pass = 'back') {
-    streamLetters.forEach((letter) => {
-      const orbitAngle = (elapsed * letter.angularSpeed) + letter.seed;
-      const depth = Math.sin(orbitAngle);
-      const isFront = depth > 0;
-      if ((pass === 'front' && !isFront) || (pass === 'back' && isFront)) return;
-
-      const wobbleX = Math.sin((elapsed * letter.wobbleSpeed) + (letter.seed * 1.4)) * letter.wobble;
-      const wobbleY = Math.cos((elapsed * letter.wobbleSpeed * 0.82) + (letter.seed * 0.9)) * letter.wobble * 0.72;
-      const x = (width / 2) + (Math.cos(orbitAngle) * letter.radiusX) + wobbleX;
-      const y = wordCenterY + (depth * letter.radiusY) + wobbleY;
-      const depthScale = isFront ? (1 + (depth * 0.22)) : (0.74 + ((depth + 1) * 0.08));
-      const alpha = letter.alpha * fadeAmount * (isFront ? (0.72 + (depth * 0.42)) : 0.18);
-      if (alpha <= 0.015) return;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = textColor;
-      ctx.font = `500 ${letter.size * depthScale}px ${serifFont}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(letter.glyph, x, y);
-      ctx.restore();
-    });
-  }
 
   function frame(now) {
     if (sequenceId !== openingSequenceId) return;
 
     const elapsed = now - start;
     const flowProgress = easeOutCubic(getPhaseProgress(elapsed, 0, flowDuration));
-    const settleProgress = easeInOutCubic(getPhaseProgress(elapsed, flowDuration * 0.58, settleDuration));
-    const revealProgress = easeInOutCubic(getPhaseProgress(elapsed, flowDuration + settleDuration, revealDuration));
-    const fadeStreamsProgress = getPhaseProgress(elapsed, flowDuration + (settleDuration * 0.3), revealDuration);
+    const settleProgress = easeInOutCubic(getPhaseProgress(elapsed, flowDuration * 0.56, settleDuration));
+    const revealProgress = easeInOutCubic(getPhaseProgress(elapsed, flowDuration + settleDuration * 0.15, revealDuration));
+    const subtitleProgress = easeInOutCubic(getPhaseProgress(elapsed, subtitleStartOffset, settleDuration + revealDuration));
+    const secondarySubtitleProgress = easeInOutCubic(getPhaseProgress(elapsed, secondarySubtitleStartOffset, settleDuration + revealDuration));
     const disperseProgress = easeInOutCubic(
-      getPhaseProgress(elapsed, flowDuration + settleDuration + revealDuration + (holdDuration * 0.35), disperseDuration),
+      getPhaseProgress(elapsed, disperseStartOffset, disperseDuration),
     );
-    const dissolveFade = Math.max(0, 1 - (disperseProgress ** 2.1));
+    const rippleProgress = easeInOutCubic(
+      getPhaseProgress(elapsed, rippleStartOffset, rippleEndOffset - rippleStartOffset),
+    );
+    const transitionProgress = easeInOutCubic(
+      getPhaseProgress(elapsed, secondRippleStartOffset, rippleEndOffset - secondRippleStartOffset),
+    );
+    const dissolveFade = Math.max(0, 1 - (disperseProgress ** 1.24));
+    const terminalFadeProgress = easeInOutCubic(getPhaseProgress(transitionProgress, 0.12, 0.88));
+    const sceneFadeAlpha = dissolveFade * (1 - (terminalFadeProgress * 0.68));
+    const underlayRevealAlpha = Math.min(0.42, terminalFadeProgress * 0.42);
+    openingScreen?.style.setProperty('--opening-underlay-opacity', String(underlayRevealAlpha));
 
-    ctx.clearRect(0, 0, width, height);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = textColor;
+    sceneCtx.clearRect(0, 0, width, height);
 
-    drawOrbitLetters(elapsed, Math.max(0, 1 - fadeStreamsProgress), 'back');
-
-    logoGlyphs.forEach((glyph, index) => {
-      const localProgress = clamp((flowProgress - glyph.delay) / (1 - glyph.delay), 0, 1);
-      if (localProgress <= 0.001) return;
-
-      const travel = easeOutCubic(localProgress);
-      const arcStrength = (1 - travel) * glyph.enterArc;
-      const settleDriftX = Math.sin((elapsed * 0.0016) + (index * 0.9)) * finalFontSize * 0.005 * settleProgress;
-      const settleDriftY = Math.cos((elapsed * 0.0012) + (index * 1.1)) * finalFontSize * 0.004 * settleProgress;
-      const x = lerp(glyph.startX, glyph.targetX, travel) + (glyph.driftX * (1 - travel)) + settleDriftX;
-      const y = lerp(glyph.startY, glyph.targetY, travel) + Math.sin((travel * Math.PI) + (index * 0.35)) * arcStrength + (glyph.driftY * (1 - travel)) + settleDriftY;
-      const alpha = Math.min(0.98, (0.22 + (travel * glyph.alpha) + (settleProgress * 0.18) + (revealProgress * 0.08))) * dissolveFade;
-      if (alpha <= 0.02) return;
-
-      ctx.save();
-      drawWordmarkGlyph(ctx, glyph.glyph, x, y, alpha);
-      ctx.restore();
-    });
-
-    if (disperseProgress > 0.001) {
-      drawRippleWord(dissolveFade, disperseProgress);
+    if (backgroundImage) {
+      drawCoverImage(sceneCtx, backgroundImage, width, height, 1 + (disperseProgress * 0.04));
+    } else {
+      const fallbackGradient = sceneCtx.createLinearGradient(0, 0, 0, height);
+      fallbackGradient.addColorStop(0, '#5f7894');
+      fallbackGradient.addColorStop(0.58, '#8d7d73');
+      fallbackGradient.addColorStop(1, '#182011');
+      sceneCtx.fillStyle = fallbackGradient;
+      sceneCtx.fillRect(0, 0, width, height);
     }
 
-    drawOrbitLetters(elapsed, Math.max(0, 1 - fadeStreamsProgress), 'front');
+    sceneCtx.fillStyle = 'rgba(8, 12, 18, 0.2)';
+    sceneCtx.fillRect(0, 0, width, height);
+
+    const vignette = sceneCtx.createLinearGradient(0, 0, 0, height);
+    vignette.addColorStop(0, 'rgba(10, 16, 24, 0.28)');
+    vignette.addColorStop(0.34, 'rgba(10, 16, 24, 0.04)');
+    vignette.addColorStop(0.72, 'rgba(10, 16, 24, 0.08)');
+    vignette.addColorStop(1, 'rgba(3, 4, 7, 0.42)');
+    sceneCtx.fillStyle = vignette;
+    sceneCtx.fillRect(0, 0, width, height);
+
+    if (animatedLogoSegments.length) {
+      animatedLogoSegments.forEach((segment, index) => {
+        const localProgress = clamp((flowProgress - segment.delay) / (1 - segment.delay), 0, 1);
+        if (localProgress <= 0.001) return;
+        const travel = easeOutCubic(localProgress);
+        const arcStrength = (1 - travel) * segment.enterArc;
+        const settleDriftX = Math.sin((elapsed * 0.0017) + (index * 0.9)) * segment.targetWidth * 0.014 * settleProgress;
+        const settleDriftY = Math.cos((elapsed * 0.0013) + (index * 1.1)) * segment.targetHeight * 0.012 * settleProgress;
+        const x = lerp(segment.startX, segment.targetX, travel) + (segment.driftX * (1 - travel)) + settleDriftX;
+        const y = lerp(segment.startY, segment.targetY, travel)
+          + (Math.sin((travel * Math.PI) + (index * 0.35)) * arcStrength)
+          + (segment.driftY * (1 - travel))
+          + settleDriftY;
+        const alpha = Math.min(1, (0.18 + (travel * segment.alpha) + (settleProgress * 0.22) + (revealProgress * 0.1))) * dissolveFade;
+        if (alpha <= 0.02) return;
+        sceneCtx.save();
+        sceneCtx.globalAlpha = alpha;
+        sceneCtx.drawImage(segment.canvas, x, y, segment.targetWidth, segment.targetHeight);
+        sceneCtx.restore();
+      });
+    } else if (logoImage) {
+      const travel = easeOutCubic(flowProgress);
+      const x = lerp(fallbackLogoMotion.startX, fallbackLogoMotion.targetX, travel);
+      const y = lerp(fallbackLogoMotion.startY, fallbackLogoMotion.targetY, travel);
+      sceneCtx.save();
+      sceneCtx.globalAlpha = (0.22 + (travel * 0.78)) * dissolveFade;
+      sceneCtx.drawImage(logoImage, x, y, logoRenderWidth, logoRenderHeight);
+      sceneCtx.restore();
+    }
+
+    const subtitleAlpha = Math.min(0.96, (subtitleProgress * 0.92) + (revealProgress * 0.08)) * Math.max(0, 1 - (disperseProgress * 0.88));
+    const subtitleOffsetY = (1 - subtitleProgress) * subtitleFontSize * 0.85;
+    sceneCtx.save();
+    sceneCtx.globalAlpha = subtitleAlpha;
+    sceneCtx.font = `400 ${subtitleFontSize}px ${subtitleFont}`;
+    sceneCtx.textAlign = 'center';
+    sceneCtx.textBaseline = 'middle';
+    sceneCtx.fillStyle = textColor;
+    sceneCtx.shadowColor = 'rgba(0, 0, 0, 0.22)';
+    sceneCtx.shadowBlur = 16 * ratio;
+    const subtitleY = logoTop + logoRenderHeight + (height * 0.075) + subtitleOffsetY;
+    subtitleLines.forEach((line, index) => {
+      sceneCtx.fillText(line, width / 2, subtitleY + (index * subtitleLineHeight));
+    });
+    const secondarySubtitleAlpha = Math.min(0.96, (secondarySubtitleProgress * 0.92) + (revealProgress * 0.08))
+      * Math.max(0, 1 - (disperseProgress * 0.88));
+    const secondarySubtitleOffsetY = (1 - secondarySubtitleProgress) * secondarySubtitleFontSize * 0.85;
+    const secondarySubtitleY = subtitleY
+      + (subtitleLines.length * subtitleLineHeight)
+      + (secondarySubtitleFontSize * 1.15)
+      + secondarySubtitleOffsetY;
+    sceneCtx.globalAlpha = secondarySubtitleAlpha;
+    sceneCtx.font = `400 ${secondarySubtitleFontSize}px ${subtitleFont}`;
+    addWrappedText(sceneCtx, secondarySubtitleText, {
+      x: width / 2,
+      y: secondarySubtitleY,
+      maxWidth: logoRenderWidth * 0.96,
+      lineHeight: secondarySubtitleLineHeight,
+      maxLines: 6,
+    });
+    if (rippleProgress > 0.001) {
+      const rippleAlpha = Math.max(0, 1 - (rippleProgress ** 1.12));
+      drawRippleWord(sceneCtx, rippleAlpha, elapsed);
+    }
+    sceneCtx.restore();
+
+    ctx.clearRect(0, 0, width, height);
+    const shakeAmplitude = prefersReducedMotion ? 0 : Math.min(width, height) * 0.015 * disperseProgress;
+    const shakeX = Math.sin((elapsed * 0.028) + (disperseProgress * 8.5)) * shakeAmplitude;
+    const shakeY = Math.cos((elapsed * 0.023) + (disperseProgress * 6.8)) * shakeAmplitude * 0.65;
+    const rotation = prefersReducedMotion ? 0 : Math.sin(elapsed * 0.0054) * 0.009 * disperseProgress;
+    const sceneScale = 1 + (disperseProgress * 0.038);
+
+    ctx.save();
+    ctx.globalAlpha = sceneFadeAlpha;
+    ctx.filter = prefersReducedMotion ? 'none' : `blur(${disperseProgress * 14}px)`;
+    ctx.translate((width / 2) + shakeX, (height / 2) + shakeY);
+    ctx.rotate(rotation);
+    ctx.scale(sceneScale, sceneScale);
+    ctx.drawImage(sceneCanvas, -width / 2, -height / 2, width, height);
+    ctx.restore();
 
     if (elapsed < totalDuration) {
       requestAnimationFrame(frame);
@@ -671,6 +889,7 @@ function startOpeningSequence(canvas, sequenceId, prefersReducedMotion) {
     }
 
     if (sequenceId === openingSequenceId) {
+      openingScreen?.style.setProperty('--opening-underlay-opacity', '0');
       enterTimelineFromOpening();
     }
   }

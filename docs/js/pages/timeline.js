@@ -32,6 +32,8 @@ function getTimelinePosts(state, activeTab) {
   return sortRecommended(posts);
 }
 
+const TIMELINE_PARTICLE_SIZE = { w: 180, h: 240 };
+
 const TIMELINE_BOARD_SLOTS = [
   { x: 70, y: 78, w: 210, h: 300 },
   { x: 382, y: 116, w: 122, h: 148 },
@@ -42,7 +44,12 @@ const TIMELINE_BOARD_SLOTS = [
   { x: 88, y: 834, w: 156, h: 196 },
   { x: 344, y: 786, w: 182, h: 264 },
   { x: 640, y: 872, w: 142, h: 172 },
-];
+].map((slot) => ({
+  x: Math.round(slot.x + (slot.w / 2) - (TIMELINE_PARTICLE_SIZE.w / 2)),
+  y: Math.round(slot.y + (slot.h / 2) - (TIMELINE_PARTICLE_SIZE.h / 2)),
+  w: TIMELINE_PARTICLE_SIZE.w,
+  h: TIMELINE_PARTICLE_SIZE.h,
+}));
 
 const TIMELINE_BOARD_WIDTH = 860;
 const TIMELINE_BOARD_HEIGHT = 1120;
@@ -117,7 +124,7 @@ function renderTimelineField(posts) {
 }
 
 export function renderHome(state, uiState) {
-  const homeThemeMode = uiState?.homeTheme || 'dark';
+  const homeThemeMode = uiState?.homeTheme || 'light';
   const homeTheme = resolveHomeTheme(homeThemeMode);
   const homeCoreState = uiState?.homeCoreState || 'default';
   const toggleLabel = getThemeLabel(homeThemeMode);
@@ -126,43 +133,30 @@ export function renderHome(state, uiState) {
   return `
     <section class="page orbit-home orbit-home--${homeTheme} orbit-home--mode-${homeThemeMode} orbit-home--${homeCoreState}">
       <div class="orbit-stage">
-        <button class="orbit-node orbit-node--theme orbit-node--theme-mode-${homeThemeMode}" type="button" data-home-theme-toggle aria-label="Switch main page theme">
-          <strong class="orbit-node__title">${toggleLabel}</strong>
-          <span class="orbit-node__meta">${toggleMeta}</span>
+        <button class="orbit-node orbit-node--setting orbit-node--theme-mode-${homeThemeMode}" type="button" data-home-theme-toggle aria-label="Open settings">
+          <span class="orbit-node__icon" aria-hidden="true">${getIcon('spark')}</span>
+          <strong class="orbit-node__title">setting</strong>
+          <span class="orbit-node__meta">${toggleLabel} / ${toggleMeta}</span>
         </button>
-        <div class="orbit-stage__noise" aria-hidden="true"></div>
-        <div class="orbit-stage__glow orbit-stage__glow--a" aria-hidden="true"></div>
-        <div class="orbit-stage__glow orbit-stage__glow--b" aria-hidden="true"></div>
-        <div class="orbit-stage__glow orbit-stage__glow--c" aria-hidden="true"></div>
 
         <button class="orbit-node orbit-node--timeline" type="button" data-home-nav="timeline">
           <span class="orbit-node__icon" aria-hidden="true">${getIcon('timeline')}</span>
-          <strong class="orbit-node__title">Timeline</strong>
+          <strong class="orbit-node__title">timeline</strong>
         </button>
 
         <button class="orbit-node orbit-node--profile" type="button" data-home-nav="profile">
           <span class="orbit-node__icon" aria-hidden="true">${getIcon('profile')}</span>
-          <strong class="orbit-node__title">Profile</strong>
+          <strong class="orbit-node__title">profile</strong>
         </button>
 
         <button class="orbit-node orbit-node--search" type="button" data-home-nav="search">
           <span class="orbit-node__icon" aria-hidden="true">${getIcon('search')}</span>
-          <strong class="orbit-node__title">Search</strong>
+          <strong class="orbit-node__title">search</strong>
         </button>
 
         <button class="orbit-node orbit-node--compose" type="button" data-home-nav="compose">
           <span class="orbit-node__icon" aria-hidden="true">${getIcon('compose')}</span>
-          <strong class="orbit-node__title">Post</strong>
-        </button>
-
-        <button class="orbit-core orbit-core--button" type="button" data-home-core-toggle aria-label="Reveal hidden home mark">
-          <span class="orbit-core__surface">
-            <img class="orbit-core__mark" src="image/icon/icon_toka.png" alt="" />
-          </span>
-        </button>
-
-        <button class="orbit-sheep" type="button" data-home-sheep-toggle aria-label="Return to main page">
-          <img class="orbit-sheep__mark" src="image/icon/hitsuji_toka.png" alt="" />
+          <strong class="orbit-node__title">post</strong>
         </button>
       </div>
     </section>

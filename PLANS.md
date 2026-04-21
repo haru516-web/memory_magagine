@@ -25,3 +25,21 @@ Validation Steps
 
 Open Questions
 - None for MVP; use existing text fields `headline`, `subhead`, `body`, `date` and hide unused text fields.
+## Opening Burn Variant
+
+- Goal: Replace the opening screen with a new burn variant using the supplied background and logo assets.
+- Constraints:
+  - Keep existing route flow and opening sequence timing.
+  - Use `docs/image/background/okinawa.png` for the background.
+  - Use `docs/image/logo/b439a9c7-433e-4123-91c2-7d9eb952c1b4.png` for the logo.
+  - Match the composition of `docs/references/images/opening_burn.png`.
+  - Keep the central ripple effect and add a whole-screen shake/fade transition into the main page.
+- Target files:
+  - `docs/js/pages/opening.js`
+  - `docs/css/opening.css`
+  - `docs/js/app.js`
+- Steps:
+  - Add opening DOM layers for background, logo, subtitle, and effect canvas.
+  - Rework opening sequence logic to animate the image-based logo and subtitle using the existing timing phases.
+  - Add ripple, screen wobble, and fade-out transition.
+  - Build and verify generated assets.

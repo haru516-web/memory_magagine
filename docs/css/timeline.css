@@ -1377,3 +1377,117 @@
     min-height: 0;
   }
 }
+
+.orbit-home {
+  --home-page-bg: #f7f1ea;
+  --home-panel-bg: #b3b3b3;
+  --home-panel-text: #121212;
+}
+
+.orbit-home--dark {
+  --home-page-bg: #121316;
+  --home-panel-bg: #3a3d42;
+  --home-panel-text: #f5f5f3;
+}
+
+.orbit-home--mode-system {
+  --home-page-bg: #edf4f7;
+  --home-panel-bg: #9eacb4;
+  --home-panel-text: #10202d;
+}
+
+.orbit-home::before {
+  background: none;
+}
+
+.orbit-home .orbit-stage {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 0;
+  border-radius: 0;
+  background-color: var(--home-page-bg);
+  background-image: url('../image/background/okinawa.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  display: block;
+}
+
+.orbit-home .orbit-stage__noise,
+.orbit-home .orbit-stage__glow,
+.orbit-home .orbit-core,
+.orbit-home .orbit-sheep {
+  display: none;
+}
+
+.orbit-home .orbit-node {
+  padding: 18px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+}
+
+.orbit-home .orbit-node__icon {
+  display: grid;
+  width: clamp(28px, 3.8vw, 44px);
+  height: clamp(28px, 3.8vw, 44px);
+  color: currentColor;
+}
+
+.orbit-home .orbit-node__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.orbit-home .orbit-node__meta {
+  display: none;
+}
+
+.orbit-home .orbit-node__title {
+  font-size: clamp(20px, 3.6vw, 44px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  color: currentColor;
+}
+
+.orbit-home .orbit-node--compose {
+  top: 4.7%;
+  left: 5.1%;
+  right: auto;
+  bottom: auto;
+  width: 44.9%;
+  height: 37.5%;
+}
+
+.orbit-home .orbit-node--search,
+.orbit-home .orbit-node--profile,
+.orbit-home .orbit-node--setting {
+  left: auto;
+  right: 5.5%;
+  bottom: auto;
+  width: 39.2%;
+  height: 18.15%;
+}
+
+.orbit-home .orbit-node--search {
+  top: 4.7%;
+}
+
+.orbit-home .orbit-node--profile {
+  top: 25.2%;
+}
+
+.orbit-home .orbit-node--setting {
+  top: 46.1%;
+}
+
+.orbit-home .orbit-node--timeline {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 8.6%;
+  width: 100%;
+  height: 23.6%;
+}

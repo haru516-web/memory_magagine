@@ -31,6 +31,51 @@
   gap: 12px;
 }
 
+.page--compose--tags {
+  height: calc(100dvh - 36px);
+  min-height: calc(100dvh - 36px);
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 8px 0 0;
+}
+
+.page--compose--tags .compose-form--tags {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 0 14px calc(env(safe-area-inset-bottom) + 14px);
+}
+
+.page--compose--tags .page-header--compose {
+  margin-bottom: 12px;
+}
+
+.page--compose--tags .compose-tag-stage {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 16px;
+}
+
+.page--compose--tags .compose-flow-actions {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 6;
+  margin-top: 0;
+  padding: 12px 0 0;
+  background: linear-gradient(180deg, rgba(247, 242, 236, 0.12), rgba(247, 242, 236, 0.96) 28%, rgba(247, 242, 236, 1));
+}
+
+.page--compose--tags .compose-stage-back,
+.page--compose--tags .compose-submit-button {
+  position: static;
+}
+
 .compose-studio {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(390px, 460px);
