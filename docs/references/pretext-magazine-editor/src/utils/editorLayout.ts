@@ -55,6 +55,11 @@ function shrinkToAvoid(box: EditorBox, against: EditorBox, overlapX: number, ove
   return false
 }
 
+function isTextImagePair(primary: EditorBox, secondary: EditorBox) {
+  return (primary.kind === 'image' && secondary.kind !== 'image')
+    || (primary.kind !== 'image' && secondary.kind === 'image')
+}
+
 function pushApart(primary: EditorBox, secondary: EditorBox, activeId?: string) {
   const primaryRect = rectOf(primary)
   const secondaryRect = rectOf(secondary)
@@ -62,6 +67,9 @@ function pushApart(primary: EditorBox, secondary: EditorBox, activeId?: string) 
 
   const overlap = overlapAmount(primaryRect, secondaryRect)
   if (overlap.x <= 0 || overlap.y <= 0) return
+
+  // Image/text pairs should keep the image in place and let text reflow around it.
+  if (isTextImagePair(primary, secondary)) return
 
   const moveSecondary = secondary.id !== activeId || primary.id === activeId
   const target = moveSecondary ? secondary : primary

@@ -3,9 +3,12 @@ import { DEFAULT_BODY_TEXT, DEFAULT_TITLE_TEXT, PAGE_HEIGHT, PAGE_WIDTH } from '
 import { Inspector } from './components/Inspector'
 import { Toolbar } from './components/Toolbar'
 import type { DragMode, EditorBox, ImageBox, ResizeHandle, TextBox } from './types'
-import { applyResize, rectOf, sortByZ, translateRect } from './utils/geometry'
+import { applyResize, clampRectToPage, rectOf, sortByZ, translateRect } from './utils/geometry'
 import { normalizeBoxes } from './utils/editorLayout'
 import { flowTextLines } from './utils/textFlow'
+
+const CENTER_SNAP_THRESHOLD = 18
+const EMPTY_SNAP_GUIDES = { horizontal: false, vertical: false }
 
 function uid() {
   return globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
@@ -150,6 +153,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
   const [dragMode, setDragMode] = useState<DragMode>({ type: 'idle' })
   const [cropMode, setCropMode] = useState(false)
   const [embeddedScale, setEmbeddedScale] = useState(1)
+  const [snapGuides, setSnapGuides] = useState(EMPTY_SNAP_GUIDES)
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null)
   const canvasAreaRef = useRef<HTMLDivElement | null>(null)
@@ -177,6 +181,32 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
   const bringToFront = (id: string, sourceBoxes = boxes) => {
     const nextZ = maxZ(sourceBoxes) + 1
     return sourceBoxes.map((box) => (box.id === id ? { ...box, zIndex: nextZ } : box))
+  }
+
+  const snapRectToPageCenter = (rect: { x: number, y: number, width: number, height: number }) => {
+    let nextRect = { ...rect }
+    let horizontal = false
+    let vertical = false
+    const pageCenterX = PAGE_WIDTH / 2
+    const pageCenterY = PAGE_HEIGHT / 2
+    const boxCenterX = nextRect.x + (nextRect.width / 2)
+    const boxCenterY = nextRect.y + (nextRect.height / 2)
+
+    if (Math.abs(boxCenterX - pageCenterX) <= CENTER_SNAP_THRESHOLD) {
+      nextRect.x = pageCenterX - (nextRect.width / 2)
+      vertical = true
+    }
+
+    if (Math.abs(boxCenterY - pageCenterY) <= CENTER_SNAP_THRESHOLD) {
+      nextRect.y = pageCenterY - (nextRect.height / 2)
+      horizontal = true
+    }
+
+    nextRect = clampRectToPage(nextRect)
+    return {
+      rect: nextRect,
+      guides: { horizontal, vertical },
+    }
   }
 
   const selectBox = (id: string) => {
@@ -256,6 +286,13 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
     setSelectedId(null)
     setEditingTextId(null)
     setCropMode(false)
+  }
+
+  const clearSelection = () => {
+    setSelectedId(null)
+    setEditingTextId(null)
+    setCropMode(false)
+    setSnapGuides(EMPTY_SNAP_GUIDES)
   }
 
   const openUploadPicker = (boxId: string) => {
@@ -357,6 +394,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
       const point = toPagePoint(clientX, clientY)
       const dx = point.x - dragMode.startX
       const dy = point.y - dragMode.startY
+      let nextGuides = EMPTY_SNAP_GUIDES
 
       setBoxes((prev) => {
         const next = prev.map(cloneEditorBox)
@@ -366,8 +404,10 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
 
         if (dragMode.type === 'move') {
           const moved = translateRect(dragMode.origin, dx, dy)
-          current.x = moved.x
-          current.y = moved.y
+          const snapped = snapRectToPageCenter(moved)
+          current.x = snapped.rect.x
+          current.y = snapped.rect.y
+          nextGuides = snapped.guides
         } else if (dragMode.type === 'resize') {
           const resized = applyResize(dragMode.origin, dragMode.handle, dx, dy, current.minWidth, current.minHeight)
           current.x = resized.x
@@ -381,6 +421,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
 
         return next
       })
+      setSnapGuides(nextGuides)
     }
 
     const onPointerMove = (event: PointerEvent) => {
@@ -413,6 +454,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
         dragPointerRef.current = null
       }
       setDragMode({ type: 'idle' })
+      setSnapGuides(EMPTY_SNAP_GUIDES)
       setBoxes((prev) => normalizeBoxes(prev, selectedId))
       releasePointerCapture()
     }
@@ -497,33 +539,6 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
     }
   }, [embedded])
 
-  useEffect(() => {
-    if (!embedded || !selected) return
-    const container = canvasAreaRef.current
-    const target = container?.querySelector<HTMLElement>(`[data-editor-box-id="${selected.id}"]`)
-    if (!container || !target) return
-    const frame = window.requestAnimationFrame(() => {
-      const containerRect = container.getBoundingClientRect()
-      const targetRect = target.getBoundingClientRect()
-      const nextLeft =
-        container.scrollLeft +
-        (targetRect.left - containerRect.left) -
-        ((containerRect.width - targetRect.width) / 2)
-      const nextTop =
-        container.scrollTop +
-        (targetRect.top - containerRect.top) -
-        ((containerRect.height - targetRect.height) / 2)
-
-      container.scrollTo({
-        left: Math.max(0, nextLeft),
-        top: Math.max(0, nextTop),
-        behavior: 'smooth',
-      })
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [embedded, selected?.id])
-
   const renderedBoxes = useMemo(() => sortByZ(boxes), [boxes])
 
   return (
@@ -565,7 +580,15 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
             />
           )}
 
-        <div ref={canvasAreaRef} className={`canvas-area ${embedded ? 'canvas-area--embedded' : ''}`}>
+        <div
+          ref={canvasAreaRef}
+          className={`canvas-area ${embedded ? 'canvas-area--embedded' : ''}`}
+          onPointerDown={(event) => {
+            const target = event.target as HTMLElement | null
+            if (target?.closest('[data-editor-box-id]')) return
+            clearSelection()
+          }}
+        >
           <div
             className={`page-stage-shell ${embedded ? 'page-stage-shell--embedded' : ''}`}
             style={embedded ? { width: `${PAGE_WIDTH * embeddedScale}px`, height: `${PAGE_HEIGHT * embeddedScale}px` } : undefined}
@@ -586,12 +609,12 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
             <div
               ref={pageRef}
               className="page"
-              onPointerDown={() => {
-                setSelectedId(null)
-                setCropMode(false)
-              }}
+              onPointerDown={() => clearSelection()}
             >
-              <div className="page__guides" />
+              <div className={`page__guides ${snapGuides.vertical ? 'is-vertical-active' : ''} ${snapGuides.horizontal ? 'is-horizontal-active' : ''}`}>
+                <div className="page__guide page__guide--vertical" />
+                <div className="page__guide page__guide--horizontal" />
+              </div>
               {renderedBoxes.map((box) => {
                 const isSelected = box.id === selectedId
                 const baseStyle = {

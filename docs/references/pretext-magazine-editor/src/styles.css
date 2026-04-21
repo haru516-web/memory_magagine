@@ -347,6 +347,33 @@ textarea {
     linear-gradient(90deg, rgba(17, 17, 17, 0.04) 1px, transparent 1px);
   background-size: 100% 34px, 34px 100%;
   pointer-events: none;
+  z-index: 999;
+}
+
+.page__guide {
+  position: absolute;
+  background: rgba(56, 117, 255, 0.52);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.page__guide--vertical {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+}
+
+.page__guide--horizontal {
+  left: 0;
+  right: 0;
+  top: calc(50% - 0.5px);
+  height: 1px;
+}
+
+.page__guides.is-vertical-active .page__guide--vertical,
+.page__guides.is-horizontal-active .page__guide--horizontal {
+  opacity: 1;
 }
 
 .editor-box {
