@@ -43,3 +43,21 @@ Open Questions
   - Rework opening sequence logic to animate the image-based logo and subtitle using the existing timing phases.
   - Add ripple, screen wobble, and fade-out transition.
   - Build and verify generated assets.
+
+## Compose Flow Polish
+
+- Goal: Restyle the `Post` flow so template selection, editing, and tag selection feel like one restrained full-screen editorial experience closer to the supplied mobile reference.
+- Constraints:
+  - Keep current routing, stage flow, and persistence intact.
+  - Reuse existing compose renderer and CSS structure.
+  - Do not redesign unrelated screens.
+- Target files:
+  - `docs/js/pages/compose.js`
+  - `docs/css/compose.css`
+  - `docs/css/layout.css`
+- Steps:
+  - Flatten the compose shell so the stages use the full mobile canvas instead of nested panel cards.
+  - Rework the template selection stage into a larger preview + bottom selection rail.
+  - Refine the edit stage to keep the page dominant and controls secondary.
+  - Simplify the tags stage into a cleaner scrollable list with fixed submit action.
+  - Build and verify on mobile-sized layout.

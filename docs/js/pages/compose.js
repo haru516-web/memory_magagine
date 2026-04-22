@@ -379,17 +379,10 @@ function renderTagScreen({ selectedId, selectedBackground, selectedFixedTags, fr
 
       <form class="compose-form compose-form--tags" id="composeForm">
         <section class="compose-tag-stage">
-          <section class="compose-group compose-group--template compose-group--template-summary">
-            <div class="compose-group__head compose-group__head--template">
-              <h3>Template</h3>
-              ${renderColorPicker(selectedBackground)}
-            </div>
-            ${renderTemplatePicker(selectedId)}
-          </section>
           ${renderTagsStagePanel(selectedFixedTags, freeTagsValue)}
         </section>
         <div class="compose-flow-actions">
-          <button class="button button--ghost compose-stage-back" type="button" data-compose-stage-nav="edit">Edit</button>
+          <button class="button button--ghost compose-draft-button" type="button" data-save-compose-draft>Save Draft</button>
           <button class="button button--primary compose-submit-button" type="submit">${submitLabel}</button>
         </div>
       </form>

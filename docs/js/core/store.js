@@ -8,6 +8,7 @@ const defaultState = {
     avatarData: '',
   },
   posts: [],
+  drafts: [],
   issues: [],
   followingAuthors: [],
 };
@@ -67,6 +68,21 @@ function normalizePost(post) {
   };
 }
 
+function normalizeDraft(draft) {
+  const composeData = normalizeComposeData({
+    composeData: draft.composeData && typeof draft.composeData === 'object' ? draft.composeData : null,
+    imageData: '',
+  });
+  const fallbackTitle = composeData?.headline || draft.title || 'Untitled';
+  return {
+    id: draft.id || createId('draft'),
+    title: String(fallbackTitle || 'Untitled').trim() || 'Untitled',
+    composeData,
+    createdAt: draft.createdAt || new Date().toISOString(),
+    updatedAt: draft.updatedAt || draft.createdAt || new Date().toISOString(),
+  };
+}
+
 function normalizeState(saved) {
   if (!saved) return structuredClone(defaultState);
   return {
@@ -76,6 +92,7 @@ function normalizeState(saved) {
       avatarData: saved.profile?.avatarData || '',
     },
     posts: Array.isArray(saved.posts) ? saved.posts.map(normalizePost) : [],
+    drafts: Array.isArray(saved.drafts) ? saved.drafts.map(normalizeDraft) : [],
     issues: Array.isArray(saved.issues) ? saved.issues : [],
     followingAuthors: Array.isArray(saved.followingAuthors) ? saved.followingAuthors : [],
   };
@@ -113,6 +130,32 @@ export function addPost(post) {
     updatedAt: null,
     composeData: post.composeData || null,
   });
+  commit(next);
+}
+
+export function upsertDraft(draftInput) {
+  const next = structuredClone(state);
+  const existingIndex = next.drafts.findIndex((draft) => draft.id === draftInput.id);
+  const normalized = normalizeDraft({
+    ...draftInput,
+    updatedAt: new Date().toISOString(),
+    createdAt: existingIndex >= 0 ? next.drafts[existingIndex].createdAt : (draftInput.createdAt || new Date().toISOString()),
+  });
+
+  if (existingIndex >= 0) {
+    next.drafts[existingIndex] = normalized;
+  } else {
+    next.drafts.unshift(normalized);
+  }
+
+  commit(next);
+  return normalized;
+}
+
+export function deleteDraft(draftId) {
+  const next = structuredClone(state);
+  if (!next.drafts.some((draft) => draft.id === draftId)) return;
+  next.drafts = next.drafts.filter((draft) => draft.id !== draftId);
   commit(next);
 }
 

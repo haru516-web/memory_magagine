@@ -1,3 +1,382 @@
+.page--profile-journal {
+  gap: 0;
+  padding: 0;
+}
+
+.profile-journal-shell {
+  display: grid;
+  gap: 18px;
+  min-height: 100%;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 10px)
+    14px
+    calc(env(safe-area-inset-bottom, 0px) + 18px);
+  background: linear-gradient(180deg, #fcfaf6 0%, #f7f2ea 100%);
+}
+
+.profile-journal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-journal-icon {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: rgba(47, 36, 31, 0.74);
+  display: grid;
+  place-items: center;
+}
+
+.profile-journal-icon svg,
+.profile-journal-mark svg {
+  width: 17px;
+  height: 17px;
+}
+
+.profile-journal-hero {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.profile-journal-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(233, 223, 215, 0.72);
+}
+
+.profile-journal-avatar > * {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-journal-meta {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.profile-journal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-journal-title {
+  margin: 0;
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+  font-size: 31px;
+  font-weight: 500;
+  line-height: 1;
+  color: #2f2520;
+}
+
+.profile-journal-mark {
+  color: rgba(104, 86, 75, 0.68);
+  display: inline-flex;
+}
+
+.profile-journal-handle {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(96, 80, 70, 0.62);
+}
+
+.profile-journal-bio {
+  margin: 4px 0 0;
+  max-width: 28ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: rgba(58, 46, 40, 0.82);
+}
+
+.profile-journal-stats {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-top: 1px solid rgba(90, 70, 56, 0.08);
+  border-bottom: 1px solid rgba(90, 70, 56, 0.08);
+  padding: 12px 0;
+}
+
+.profile-journal-stats span {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(91, 73, 63, 0.68);
+}
+
+.profile-journal-stats span + span {
+  border-left: 1px solid rgba(90, 70, 56, 0.08);
+}
+
+.profile-journal-stats strong {
+  margin-right: 4px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #2f2520;
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+}
+
+.profile-journal-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(90, 70, 56, 0.08);
+}
+
+.profile-journal-tab {
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(96, 80, 70, 0.74);
+  font-size: 13px;
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+}
+
+.profile-journal-tab.is-active {
+  background: rgba(255, 255, 255, 0.92);
+  color: #2f2520;
+  box-shadow: 0 4px 14px rgba(77, 58, 47, 0.08);
+}
+
+.profile-journal-panel {
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+}
+
+.profile-month-group,
+.profile-find-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-month-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-month-group__label,
+.profile-find-meta {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(91, 73, 63, 0.74);
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+}
+
+.profile-archive-grid,
+.profile-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-archive-card,
+.profile-draft-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 0;
+  border: 1px solid rgba(90, 70, 56, 0.08);
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 10px 24px rgba(73, 56, 47, 0.05);
+}
+
+.profile-archive-card__media,
+.profile-draft-card__body {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.profile-archive-card__media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 0.76;
+  overflow: hidden;
+  border-radius: 0;
+  background: rgba(233, 223, 215, 0.56);
+}
+
+.profile-archive-card__media img,
+.profile-draft-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-archive-card__body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.profile-archive-card__title,
+.profile-draft-card__title {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.05;
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+  font-weight: 500;
+  color: #2f2520;
+}
+
+.profile-archive-card__date,
+.profile-draft-card__date,
+.profile-draft-card__status {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: rgba(96, 80, 70, 0.62);
+}
+
+.profile-archive-card__author {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(233, 223, 215, 0.72);
+}
+
+.profile-archive-card__author > * {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-find-search {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(90, 70, 56, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.profile-find-search svg {
+  width: 16px;
+  height: 16px;
+  color: rgba(96, 80, 70, 0.5);
+}
+
+.profile-find-search input {
+  border: 0;
+  background: transparent;
+  min-width: 0;
+  padding: 0;
+  color: #2f2520;
+}
+
+.profile-find-search input:focus {
+  outline: 0;
+}
+
+.profile-find-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-filter-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(90, 70, 56, 0.08);
+  background: rgba(255, 255, 255, 0.74);
+  color: rgba(87, 70, 60, 0.8);
+  font-size: 12px;
+}
+
+.profile-filter-chip.is-active {
+  border-color: rgba(148, 112, 94, 0.28);
+  background: rgba(247, 236, 227, 0.98);
+  color: #5b4337;
+}
+
+.profile-filter-chip--soft {
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+  font-size: 14px;
+}
+
+.profile-filter-chip--clear {
+  background: transparent;
+}
+
+.profile-draft-card {
+  min-height: 230px;
+}
+
+.profile-draft-card__menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.84);
+  color: rgba(87, 70, 60, 0.8);
+  display: grid;
+  place-items: center;
+  z-index: 2;
+}
+
+.profile-draft-card__menu svg {
+  width: 16px;
+  height: 16px;
+}
+
+.profile-draft-card__body {
+  display: grid;
+  gap: 10px;
+  height: 100%;
+}
+
+.profile-draft-card__copy {
+  padding-right: 20px;
+}
+
+.profile-draft-card__media {
+  width: 100%;
+  aspect-ratio: 1.14;
+  overflow: hidden;
+  border-radius: 0;
+  background: rgba(233, 223, 215, 0.5);
+}
+
+.profile-draft-card__media--empty {
+  display: grid;
+  place-items: center;
+  color: rgba(96, 80, 70, 0.5);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-edit-panel {
+  display: grid;
+  gap: 16px;
+}
+
 .page--profile {
   gap: 22px;
 }
@@ -376,6 +755,10 @@
 }
 
 @media (max-width: 720px) {
+  .profile-journal-title {
+    font-size: 28px;
+  }
+
   .profile-network-columns,
   .profile-identity-grid,
   .profile-library-grid {
@@ -388,6 +771,10 @@
 }
 
 @media (max-width: 520px) {
+  .profile-draft-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .profile-network-summary,
   .stats-grid {
     grid-template-columns: minmax(0, 1fr);

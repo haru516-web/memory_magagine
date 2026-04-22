@@ -1,7 +1,7 @@
 import { renderBottomNav } from './components/bottomNav.js';
 import { renderCommentsModal } from './components/modals.js';
 import { getIcon } from './components/icons.js';
-import { getState, addPost, updatePost, deletePost, toggleLike, toggleSave, addComment, addImpression, updateProfile, toggleFollow, saveIssue } from './core/store.js';
+import { getState, addPost, updatePost, deletePost, toggleLike, toggleSave, addComment, addImpression, updateProfile, toggleFollow, saveIssue, upsertDraft, deleteDraft } from './core/store.js';
 import { renderOpening } from './pages/opening.js';
 import { renderHome, renderTimeline } from './pages/timeline.js';
 import { renderSearch } from './pages/search.js';
@@ -31,6 +31,7 @@ const uiState = {
   timelinePan: { x: -360, y: -220 },
   searchQuery: '',
   searchTags: [],
+  searchSort: 'popular',
   homeTheme: 'light',
   homeCoreState: 'default',
   homeCoreTapTimestamps: [],
@@ -40,6 +41,9 @@ const uiState = {
   profileAuthor: null,
   profileSection: null,
   profileLibraryTab: 'liked',
+  profileFindQuery: '',
+  profileFindTags: [],
+  profileFindMonth: '',
   profileExpanded: true,
   profileOrbitRotation: 0,
   profileOrbitDragSuppressUntil: 0,
@@ -48,6 +52,7 @@ const uiState = {
   composeTemplateId: DEFAULT_COMPOSE_TEMPLATE,
   composeBackgroundColor: '#f8f4ee',
   composeEditingPostId: null,
+  composeDraftId: null,
   composeWorkingDraft: null,
   openingTapGuardUntil: 0,
   postReturnScreen: 'timeline',
@@ -202,9 +207,14 @@ function renderShell() {
   const shellClasses = ['app-shell'];
   const screenAreaClasses = ['screen-area'];
   const themeName = resolveHomeTheme(uiState.homeTheme);
+  const hasBottomNav = ['home', 'timeline', 'search', 'profile'].includes(uiState.screen);
 
   shellClasses.push(`app-shell--theme-${themeName}`);
   shellClasses.push(`app-shell--theme-mode-${uiState.homeTheme}`);
+  if (hasBottomNav) {
+    shellClasses.push('app-shell--with-bottom-nav');
+    screenAreaClasses.push('screen-area--with-bottom-nav');
+  }
 
   if (uiState.screen === 'home') {
     shellClasses.push('app-shell--home');
@@ -217,6 +227,8 @@ function renderShell() {
     screenAreaClasses.push('screen-area--compose');
   } else if (uiState.screen === 'search') {
     screenAreaClasses.push('screen-area--search');
+  } else if (uiState.screen === 'profile') {
+    screenAreaClasses.push('screen-area--profile');
   }
 
   app.innerHTML = `
@@ -303,6 +315,7 @@ function navigate(screen) {
   }
   if (screen !== 'compose') {
     uiState.composeEditingPostId = null;
+    uiState.composeDraftId = null;
     uiState.composeStage = 'select';
     uiState.composeBackgroundColor = '#f8f4ee';
     uiState.composeWorkingDraft = null;
@@ -315,6 +328,7 @@ function navigate(screen) {
     uiState.composeStage = 'select';
     uiState.composeBackgroundColor = '#f8f4ee';
     uiState.composeTemplateId = DEFAULT_COMPOSE_TEMPLATE;
+    uiState.composeDraftId = null;
     uiState.composeWorkingDraft = createComposeWorkingDraft({
       templateId: DEFAULT_COMPOSE_TEMPLATE,
       backgroundColor: '#f8f4ee',
@@ -323,8 +337,11 @@ function navigate(screen) {
   if (screen === 'profile') {
     resetProfileAvatarDraft();
     uiState.profileAuthor = null;
-    uiState.profileSection = 'identity';
+    uiState.profileSection = 'pages';
     uiState.profileLibraryTab = 'liked';
+    uiState.profileFindQuery = '';
+    uiState.profileFindTags = [];
+    uiState.profileFindMonth = '';
     uiState.profileExpanded = true;
     uiState.profileOrbitRotation = 270;
   }
@@ -352,8 +369,11 @@ function openProfile(authorName) {
   uiState.commentPostId = null;
   uiState.profileEditOpen = false;
   uiState.profileAuthor = authorName || null;
-  uiState.profileSection = authorName ? null : 'identity';
+  uiState.profileSection = authorName ? null : 'pages';
   uiState.profileLibraryTab = 'liked';
+  uiState.profileFindQuery = '';
+  uiState.profileFindTags = [];
+  uiState.profileFindMonth = '';
   uiState.profileExpanded = true;
   uiState.profileOrbitRotation = authorName ? 0 : 270;
   render();
@@ -380,6 +400,7 @@ function openPostEdit(postId) {
   if (!post || !isOwnPost(post)) return;
   uiState.composeReturnState = captureViewState();
   uiState.composeEditingPostId = postId;
+  uiState.composeDraftId = null;
   uiState.composeStage = 'edit';
   uiState.composeTemplateId = post.composeData?.templateId || DEFAULT_COMPOSE_TEMPLATE;
   uiState.composeBackgroundColor = post.composeData?.backgroundColor || '#f8f4ee';
@@ -390,9 +411,77 @@ function openPostEdit(postId) {
   render();
 }
 
+function hasMeaningfulComposeDraft(draft) {
+  if (!draft || typeof draft !== 'object') return false;
+  const textValues = [draft.headline, draft.subhead, draft.intro, draft.body, draft.date, draft.editor]
+    .map((value) => String(value || '').trim());
+  const hasNonDefaultText = (
+    textValues[0] && textValues[0] !== composePreviewDefaults.headline
+  ) || (
+    textValues[1] && textValues[1] !== composePreviewDefaults.subhead
+  ) || (
+    textValues[2] && textValues[2] !== composePreviewDefaults.intro
+  ) || (
+    textValues[3] && textValues[3] !== composePreviewDefaults.body
+  ) || (
+    textValues[4] && textValues[4] !== composePreviewDefaults.date
+  ) || (
+    textValues[5] && textValues[5] !== composePreviewDefaults.editor
+  );
+  const hasTags = Array.isArray(draft.fixedTags) ? draft.fixedTags.length > 0 : false;
+  const hasFreeTags = Array.isArray(draft.freeTags) ? draft.freeTags.length > 0 : false;
+  const hasFiles = Object.values(draft.standardFiles || {}).some((fileState) => typeof fileState?.file === 'string' && fileState.file);
+  const hasCustomLayout = Boolean(
+    draft.customLayout
+    && (
+      Array.isArray(draft.customLayout.imageBoxes) && draft.customLayout.imageBoxes.length
+      || Array.isArray(draft.customLayout.textBoxes) && draft.customLayout.textBoxes.length
+      || Array.isArray(draft.customLayout.pretextBoxes) && draft.customLayout.pretextBoxes.length
+    ),
+  );
+  return hasNonDefaultText || hasTags || hasFreeTags || hasFiles || hasCustomLayout;
+}
+
+function persistComposeDraftOnExit() {
+  if (uiState.composeEditingPostId) return;
+  const draft = uiState.composeWorkingDraft;
+  if (!hasMeaningfulComposeDraft(draft)) {
+    if (uiState.composeDraftId) {
+      deleteDraft(uiState.composeDraftId);
+    }
+    uiState.composeDraftId = null;
+    return;
+  }
+
+  const savedDraft = upsertDraft({
+    id: uiState.composeDraftId || undefined,
+    title: buildComposeCaption(draft) || draft.headline || 'Untitled',
+    composeData: createComposeWorkingDraft(draft),
+  });
+  uiState.composeDraftId = savedDraft.id;
+}
+
+function openComposeDraft(draftId) {
+  const draft = getState().drafts.find((item) => item.id === draftId);
+  if (!draft?.composeData) return;
+  uiState.composeReturnState = captureViewState();
+  uiState.composeEditingPostId = null;
+  uiState.composeDraftId = draft.id;
+  uiState.composeStage = 'edit';
+  uiState.composeTemplateId = draft.composeData.templateId || DEFAULT_COMPOSE_TEMPLATE;
+  uiState.composeBackgroundColor = draft.composeData.backgroundColor || '#f8f4ee';
+  uiState.composeWorkingDraft = createComposeWorkingDraft(draft.composeData);
+  uiState.screen = 'compose';
+  uiState.previewPostId = null;
+  uiState.commentPostId = null;
+  render();
+}
+
 function closeCompose() {
+  persistComposeDraftOnExit();
   const snapshot = uiState.composeReturnState;
   uiState.composeReturnState = null;
+  uiState.composeDraftId = null;
   uiState.composeWorkingDraft = null;
   restoreViewState(snapshot, 'home');
 }
@@ -807,13 +896,10 @@ function startOpeningSequence(canvas, openingScreen, sequenceId, prefersReducedM
         if (localProgress <= 0.001) return;
         const travel = easeOutCubic(localProgress);
         const arcStrength = (1 - travel) * segment.enterArc;
-        const settleDriftX = Math.sin((elapsed * 0.0017) + (index * 0.9)) * segment.targetWidth * 0.014 * settleProgress;
-        const settleDriftY = Math.cos((elapsed * 0.0013) + (index * 1.1)) * segment.targetHeight * 0.012 * settleProgress;
-        const x = lerp(segment.startX, segment.targetX, travel) + (segment.driftX * (1 - travel)) + settleDriftX;
+        const x = lerp(segment.startX, segment.targetX, travel) + (segment.driftX * (1 - travel));
         const y = lerp(segment.startY, segment.targetY, travel)
           + (Math.sin((travel * Math.PI) + (index * 0.35)) * arcStrength)
-          + (segment.driftY * (1 - travel))
-          + settleDriftY;
+          + (segment.driftY * (1 - travel));
         const alpha = Math.min(1, (0.18 + (travel * segment.alpha) + (settleProgress * 0.22) + (revealProgress * 0.1))) * dissolveFade;
         if (alpha <= 0.02) return;
         sceneCtx.save();
@@ -831,53 +917,62 @@ function startOpeningSequence(canvas, openingScreen, sequenceId, prefersReducedM
       sceneCtx.restore();
     }
 
-    const subtitleAlpha = Math.min(0.96, (subtitleProgress * 0.92) + (revealProgress * 0.08)) * Math.max(0, 1 - (disperseProgress * 0.88));
-    const subtitleOffsetY = (1 - subtitleProgress) * subtitleFontSize * 0.85;
-    sceneCtx.save();
-    sceneCtx.globalAlpha = subtitleAlpha;
-    sceneCtx.font = `400 ${subtitleFontSize}px ${subtitleFont}`;
-    sceneCtx.textAlign = 'center';
-    sceneCtx.textBaseline = 'middle';
-    sceneCtx.fillStyle = textColor;
-    sceneCtx.shadowColor = 'rgba(0, 0, 0, 0.22)';
-    sceneCtx.shadowBlur = 16 * ratio;
-    const subtitleY = logoTop + logoRenderHeight + (height * 0.075) + subtitleOffsetY;
-    subtitleLines.forEach((line, index) => {
-      sceneCtx.fillText(line, width / 2, subtitleY + (index * subtitleLineHeight));
-    });
-    const secondarySubtitleAlpha = Math.min(0.96, (secondarySubtitleProgress * 0.92) + (revealProgress * 0.08))
-      * Math.max(0, 1 - (disperseProgress * 0.88));
-    const secondarySubtitleOffsetY = (1 - secondarySubtitleProgress) * secondarySubtitleFontSize * 0.85;
-    const secondarySubtitleY = subtitleY
-      + (subtitleLines.length * subtitleLineHeight)
-      + (secondarySubtitleFontSize * 1.15)
-      + secondarySubtitleOffsetY;
-    sceneCtx.globalAlpha = secondarySubtitleAlpha;
-    sceneCtx.font = `400 ${secondarySubtitleFontSize}px ${subtitleFont}`;
-    addWrappedText(sceneCtx, secondarySubtitleText, {
-      x: width / 2,
-      y: secondarySubtitleY,
-      maxWidth: logoRenderWidth * 0.96,
-      lineHeight: secondarySubtitleLineHeight,
-      maxLines: 6,
-    });
+    const subtitleYBase = logoTop + logoRenderHeight + (height * 0.075);
+    if (subtitleProgress > 0.001) {
+      const subtitleAlpha = Math.min(0.96, subtitleProgress * 0.96) * Math.max(0, 1 - (disperseProgress * 0.88));
+      const subtitleOffsetY = (1 - subtitleProgress) * subtitleFontSize * 0.85;
+      sceneCtx.save();
+      sceneCtx.globalAlpha = subtitleAlpha;
+      sceneCtx.font = `400 ${subtitleFontSize}px ${subtitleFont}`;
+      sceneCtx.textAlign = 'center';
+      sceneCtx.textBaseline = 'middle';
+      sceneCtx.fillStyle = textColor;
+      sceneCtx.shadowColor = 'rgba(0, 0, 0, 0.22)';
+      sceneCtx.shadowBlur = 16 * ratio;
+      const subtitleY = subtitleYBase + subtitleOffsetY;
+      subtitleLines.forEach((line, index) => {
+        sceneCtx.fillText(line, width / 2, subtitleY + (index * subtitleLineHeight));
+      });
+      sceneCtx.restore();
+    }
+    if (secondarySubtitleProgress > 0.001) {
+      const secondarySubtitleAlpha = Math.min(0.96, secondarySubtitleProgress * 0.96)
+        * Math.max(0, 1 - (disperseProgress * 0.88));
+      const secondarySubtitleOffsetY = (1 - secondarySubtitleProgress) * secondarySubtitleFontSize * 0.85;
+      const secondarySubtitleY = subtitleYBase
+        + (subtitleLines.length * subtitleLineHeight)
+        + (secondarySubtitleFontSize * 1.15)
+        + secondarySubtitleOffsetY;
+      sceneCtx.save();
+      sceneCtx.globalAlpha = secondarySubtitleAlpha;
+      sceneCtx.font = `400 ${secondarySubtitleFontSize}px ${subtitleFont}`;
+      sceneCtx.textAlign = 'center';
+      sceneCtx.textBaseline = 'middle';
+      sceneCtx.fillStyle = textColor;
+      sceneCtx.shadowColor = 'rgba(0, 0, 0, 0.22)';
+      sceneCtx.shadowBlur = 16 * ratio;
+      addWrappedText(sceneCtx, secondarySubtitleText, {
+        x: width / 2,
+        y: secondarySubtitleY,
+        maxWidth: logoRenderWidth * 0.96,
+        lineHeight: secondarySubtitleLineHeight,
+        maxLines: 6,
+      });
+      sceneCtx.restore();
+    }
     if (rippleProgress > 0.001) {
       const rippleAlpha = Math.max(0, 1 - (rippleProgress ** 1.12));
       drawRippleWord(sceneCtx, rippleAlpha, elapsed);
     }
-    sceneCtx.restore();
 
     ctx.clearRect(0, 0, width, height);
-    const shakeAmplitude = prefersReducedMotion ? 0 : Math.min(width, height) * 0.015 * disperseProgress;
-    const shakeX = Math.sin((elapsed * 0.028) + (disperseProgress * 8.5)) * shakeAmplitude;
-    const shakeY = Math.cos((elapsed * 0.023) + (disperseProgress * 6.8)) * shakeAmplitude * 0.65;
     const rotation = prefersReducedMotion ? 0 : Math.sin(elapsed * 0.0054) * 0.009 * disperseProgress;
     const sceneScale = 1 + (disperseProgress * 0.038);
 
     ctx.save();
     ctx.globalAlpha = sceneFadeAlpha;
     ctx.filter = prefersReducedMotion ? 'none' : `blur(${disperseProgress * 14}px)`;
-    ctx.translate((width / 2) + shakeX, (height / 2) + shakeY);
+    ctx.translate(width / 2, height / 2);
     ctx.rotate(rotation);
     ctx.scale(sceneScale, sceneScale);
     ctx.drawImage(sceneCanvas, -width / 2, -height / 2, width, height);
@@ -924,12 +1019,9 @@ function bindNavEvents() {
     {
       element: document.querySelector('[data-side-wheel="profile"]'),
       getItems: () => Array.from(document.querySelectorAll('[data-side-wheel="profile"] [data-side-nav-profile-section]')),
-      getActiveKey: () => uiState.profileSection || 'identity',
+      getActiveKey: () => uiState.profileSection || 'pages',
       applySelection: (key) => {
         uiState.profileSection = key;
-        if (uiState.profileSection === 'library') {
-          uiState.profileLibraryTab = uiState.profileLibraryTab || 'liked';
-        }
         render();
       },
     },
@@ -1283,6 +1375,24 @@ function bindSearchEvents() {
       uiState.searchTags = uiState.searchTags.includes(tag)
         ? uiState.searchTags.filter((item) => item !== tag)
         : [...uiState.searchTags, tag];
+      renderScreen();
+    });
+  });
+
+  document.querySelectorAll('[data-search-sort]').forEach((button) => {
+    button.addEventListener('click', () => {
+      uiState.searchSort = button.dataset.searchSort || 'popular';
+      renderScreen();
+    });
+  });
+
+  document.querySelectorAll('[data-search-clear-section]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const section = button.dataset.searchClearSection;
+      const sceneTags = ['ご飯', 'カフェ', '散歩', 'ドライブ', '旅行', 'まったり', 'おしゃれ', 'ロマンチック', '記念日'];
+      const moodTags = ['晴れの日', '雨の日', '夜デート', '特別な日'];
+      const sectionTags = section === 'mood' ? moodTags : sceneTags;
+      uiState.searchTags = uiState.searchTags.filter((tag) => !sectionTags.includes(tag));
       renderScreen();
     });
   });
@@ -3221,6 +3331,32 @@ function bindComposeEvents() {
     return;
   }
 
+  function saveDraftAndOpenProfile(snapshot) {
+    const draftSnapshot = snapshot || buildComposeDraftSnapshot();
+    const savedDraft = upsertDraft({
+      id: uiState.composeDraftId || undefined,
+      title: buildComposeCaption(draftSnapshot) || draftSnapshot.headline || 'Untitled',
+      composeData: createComposeWorkingDraft(draftSnapshot),
+    });
+    uiState.composeDraftId = savedDraft.id;
+    uiState.composeReturnState = null;
+    uiState.composeWorkingDraft = null;
+    uiState.composeEditingPostId = null;
+    uiState.screen = 'profile';
+    uiState.profileAuthor = null;
+    uiState.profileSection = 'drafts';
+    uiState.profileFindQuery = '';
+    uiState.profileFindTags = [];
+    uiState.profileFindMonth = '';
+    render();
+  }
+
+  document.querySelectorAll('[data-save-compose-draft]').forEach((button) => {
+    button.addEventListener('click', () => {
+      saveDraftAndOpenProfile();
+    });
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const draftSnapshot = buildComposeDraftSnapshot();
@@ -3265,6 +3401,11 @@ function bindComposeEvents() {
           standardFiles: draftSnapshot.standardFiles,
         },
       });
+    }
+
+    if (uiState.composeDraftId) {
+      deleteDraft(uiState.composeDraftId);
+      uiState.composeDraftId = null;
     }
 
     uiState.screen = 'timeline';
@@ -3326,19 +3467,79 @@ function bindProfileEvents() {
     });
   });
 
-  document.querySelectorAll('[data-profile-section]').forEach((button) => {
+  document.querySelectorAll('[data-profile-open-edit]').forEach((button) => {
     button.addEventListener('click', () => {
-      uiState.profileSection = button.dataset.profileSection;
-      if (uiState.profileSection === 'library') {
-        uiState.profileLibraryTab = uiState.profileLibraryTab || 'liked';
-      }
+      uiState.profileSection = 'edit';
       renderScreen();
     });
   });
 
-  document.querySelectorAll('[data-profile-library-tab]').forEach((button) => {
+  document.querySelectorAll('[data-profile-section]').forEach((button) => {
     button.addEventListener('click', () => {
-      uiState.profileLibraryTab = button.dataset.profileLibraryTab || 'liked';
+      uiState.profileSection = button.dataset.profileSection;
+      renderScreen();
+    });
+  });
+
+  document.querySelectorAll('[data-profile-library-tab], [data-profile-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextTab = button.dataset.profileTab || button.dataset.profileLibraryTab || 'pages';
+      uiState.profileSection = nextTab;
+      renderScreen();
+    });
+  });
+
+  document.querySelectorAll('[data-profile-find-tag]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const tag = button.dataset.profileFindTag;
+      uiState.profileFindTags = uiState.profileFindTags.includes(tag)
+        ? uiState.profileFindTags.filter((item) => item !== tag)
+        : [...uiState.profileFindTags, tag];
+      renderScreen();
+    });
+  });
+
+  document.querySelectorAll('[data-profile-find-month]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const month = button.dataset.profileFindMonth || '';
+      uiState.profileFindMonth = uiState.profileFindMonth === month ? '' : month;
+      renderScreen();
+    });
+  });
+
+  document.querySelectorAll('[data-profile-find-clear]').forEach((button) => {
+    button.addEventListener('click', () => {
+      uiState.profileFindQuery = '';
+      uiState.profileFindTags = [];
+      uiState.profileFindMonth = '';
+      renderScreen();
+    });
+  });
+
+  const profileFindInput = document.getElementById('profileFindInput');
+  if (profileFindInput) {
+    profileFindInput.addEventListener('input', (event) => {
+      uiState.profileFindQuery = event.target.value;
+      const cursor = event.target.selectionStart;
+      renderScreen();
+      const nextInput = document.getElementById('profileFindInput');
+      if (nextInput) {
+        nextInput.focus();
+        nextInput.setSelectionRange(cursor, cursor);
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-open-draft]').forEach((button) => {
+    button.addEventListener('click', () => {
+      openComposeDraft(button.dataset.openDraft);
+    });
+  });
+
+  document.querySelectorAll('[data-delete-draft]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      deleteDraft(button.dataset.deleteDraft);
       renderScreen();
     });
   });
@@ -3443,7 +3644,7 @@ function bindProfileEvents() {
         avatarData,
       });
       resetProfileAvatarDraft();
-      uiState.profileSection = null;
+      uiState.profileSection = 'pages';
       uiState.profileExpanded = true;
       renderScreen();
     });
@@ -3521,7 +3722,7 @@ function bindPageEvents() {
   bindScreenNavigationEvents();
   switch (uiState.screen) {
     case 'home':
-      bindHomeEvents();
+      bindTimelineEvents();
       break;
     case 'timeline':
       bindTimelineEvents();

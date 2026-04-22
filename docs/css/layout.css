@@ -41,16 +41,23 @@
 
 .app-shell--timeline {
   box-shadow: none;
+  overflow: hidden;
 }
 
 .app-shell--home {
   background: var(--shell-bg);
+  overflow: hidden;
 }
 
 .app-shell--compose {
+  background: linear-gradient(180deg, #f8f3ed 0%, #f4ede6 100%);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+}
+
+.app-shell--with-bottom-nav #modalRoot {
+  z-index: 18;
 }
 
 .app-shell--theme-mode-system {
@@ -87,26 +94,53 @@
 .screen-area--home {
   padding: 0;
   background: transparent;
+  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .screen-area--timeline {
-  padding: clamp(18px, 2.8vw, 32px);
+  padding: 0;
+  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.screen-area--with-bottom-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 88px);
 }
 
 .screen-area--search {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.screen-area--profile {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 
 .screen-area--compose {
-  min-height: auto;
-  overflow: visible;
-  padding:
-    18px
-    max(16px, calc(env(safe-area-inset-right) + 14px))
-    24px
-    max(16px, calc(env(safe-area-inset-left) + 14px));
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 0;
 }
 
 .page {

@@ -2,15 +2,19 @@
   gap: 12px;
 }
 
+.page--compose--select,
 .page--compose--edit {
-  height: calc(100dvh - 36px);
-  overflow: auto;
-  grid-template-rows: auto minmax(0, 1fr);
-  padding: 8px 0 0;
-  background:
-    radial-gradient(circle at top left, rgba(247, 224, 212, 0.9), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(225, 232, 222, 0.72), transparent 22%),
-    linear-gradient(180deg, #f7f2ec 0%, #efe7df 100%);
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+  background: transparent;
+  position: relative;
+}
+
+.page--compose--select {
+  background: transparent;
 }
 
 .compose-form {
@@ -21,9 +25,9 @@
 .compose-form--edit {
   height: 100%;
   min-height: 0;
-  overflow: visible;
-  grid-template-rows: minmax(360px, 1fr) auto auto;
-  gap: 8px;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
 }
 
 .compose-form--tags {
@@ -32,11 +36,13 @@
 }
 
 .page--compose--tags {
-  height: calc(100dvh - 36px);
-  min-height: calc(100dvh - 36px);
+  height: 100%;
+  min-height: 100%;
   overflow: hidden;
-  grid-template-rows: auto minmax(0, 1fr);
-  padding: 8px 0 0;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+  background: transparent;
+  position: relative;
 }
 
 .page--compose--tags .compose-form--tags {
@@ -44,12 +50,15 @@
   height: 100%;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 0 14px calc(env(safe-area-inset-bottom) + 14px);
+  gap: 0;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 62px)
+    16px
+    calc(env(safe-area-inset-bottom) + 18px);
 }
 
 .page--compose--tags .page-header--compose {
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .page--compose--tags .compose-tag-stage {
@@ -57,7 +66,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0 0 16px;
+  padding: 0 0 18px;
 }
 
 .page--compose--tags .compose-flow-actions {
@@ -67,13 +76,25 @@
   bottom: auto;
   z-index: 6;
   margin-top: 0;
-  padding: 12px 0 0;
-  background: linear-gradient(180deg, rgba(247, 242, 236, 0.12), rgba(247, 242, 236, 0.96) 28%, rgba(247, 242, 236, 1));
+  padding: 14px 0 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  background: linear-gradient(180deg, rgba(248, 243, 237, 0.12), rgba(248, 243, 237, 0.94) 28%, rgba(248, 243, 237, 1));
 }
 
-.page--compose--tags .compose-stage-back,
+.page--compose--tags .compose-draft-button,
 .page--compose--tags .compose-submit-button {
   position: static;
+  min-width: 0;
+  width: 100%;
+}
+
+.compose-draft-button {
+  min-height: 48px;
+  border-radius: 20px;
+  border: 1px solid rgba(98, 75, 61, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(60, 45, 38, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .compose-studio {
@@ -85,9 +106,12 @@
 
 .compose-select-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
 }
 
 .compose-editor {
@@ -112,6 +136,7 @@
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 88px);
 }
 
 .page-header--compose {
@@ -290,17 +315,31 @@
 }
 
 .compose-preview--editor {
-  min-height: min(52dvh, 680px);
-  padding: 24px 22px 42px;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
   overflow: hidden;
+  align-items: stretch;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .compose-preview--select {
-  padding: 12px;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 54px)
+    16px
+    24px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .compose-preview--select .compose-sheet {
-  width: min(70vw, 320px);
+  width: min(100%, calc((100dvh - 260px) * (210 / 297)));
+  max-height: calc(100dvh - 260px);
 }
 
 .page--compose--edit--page8 .compose-form--edit {
@@ -320,10 +359,45 @@
 
 .page--compose--edit .page-header--compose {
   justify-content: flex-start;
-  padding: 0 14px;
-  margin-bottom: -12px;
-  position: relative;
-  z-index: 5;
+  padding: 0 12px;
+  margin-bottom: 0;
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 0;
+  right: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.page--compose--select .page-header--compose,
+.page--compose--tags .page-header--compose {
+  justify-content: flex-start;
+  padding: 0 12px;
+  margin-bottom: 0;
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 0;
+  right: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.page--compose--select .page-header--compose > :not(.page-back--icon),
+.page--compose--tags .page-header--compose > :not(.page-back--icon) {
+  display: none;
+}
+
+.page--compose--select .page-back--icon,
+.page--compose--tags .page-back--icon {
+  pointer-events: auto;
+}
+
+.page--compose--edit .page-header--compose > :not(.page-header__actions--compose) {
+  display: none;
+}
+
+.page--compose--edit .page-header__actions--compose {
+  pointer-events: auto;
 }
 
 .compose-sheet {
@@ -331,11 +405,20 @@
   margin: 0 auto;
   aspect-ratio: 210 / 297;
   background: var(--sheet-bg, #f8f4ee);
-  border-radius: 24px;
+  border-radius: 0;
   padding: 18px;
   box-shadow:
     0 24px 60px rgba(26, 19, 16, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.page--compose--edit .compose-sheet {
+  width: min(100%, calc((100dvh - 24px) * (210 / 297)));
+  max-height: calc(100dvh - 24px);
+  border-radius: 0;
+  box-shadow:
+    0 18px 42px rgba(67, 45, 33, 0.08),
+    0 2px 0 rgba(255, 255, 255, 0.7);
 }
 
 .compose-sheet__frame {
@@ -405,6 +488,11 @@
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.36),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.app-shell--theme-dark .page--compose--edit .compose-preview--editor {
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-shell--theme-dark .compose-editable:focus {
@@ -884,10 +972,13 @@
 
 .compose-flow-actions--editor {
   grid-template-columns: minmax(0, 1fr);
-  justify-items: end;
-  margin: -10px 18px 0;
-  position: relative;
-  z-index: 4;
+  justify-items: stretch;
+  margin: 0;
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 14px);
+  z-index: 9;
 }
 
 .compose-submit-button {
@@ -901,7 +992,8 @@
 }
 
 .compose-flow-actions--editor .compose-submit-button {
-  min-width: min(100%, 220px);
+  min-width: 0;
+  width: 100%;
 }
 
 .compose-form--pretext {
@@ -1335,7 +1427,18 @@
 }
 
 .compose-group--template-select {
-  justify-self: end;
+  justify-self: stretch;
+  width: 100%;
+  padding: 18px 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+  border: 0;
+  border-radius: 28px 28px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 247, 0.96), rgba(248, 240, 232, 0.98));
+  box-shadow:
+    0 -12px 32px rgba(63, 43, 34, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px);
+  gap: 14px;
 }
 
 .compose-group__head {
@@ -1352,7 +1455,15 @@
 }
 
 .compose-group__head--template-select {
-  width: calc((var(--template-thumb-size, 56px) * 4) + (var(--template-gap, 6px) * 3) + 162px);
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.compose-group__head--template-select .compose-confirm-button {
+  grid-column: 1 / -1;
 }
 
 .compose-group--tags {
@@ -1360,8 +1471,32 @@
   background: rgba(255, 250, 247, 0.78);
 }
 
+.page--compose--tags .compose-group--tags-stage,
+.page--compose--tags .compose-group--tags,
+.page--compose--tags .compose-group--tags-nested {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.page--compose--tags .compose-group--tags-stage {
+  gap: 22px;
+}
+
 .compose-group__head h3 {
   font-size: 14px;
+}
+
+.compose-group__head--template-select h3,
+.page--compose--tags .compose-group__head h3 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(70, 49, 39, 0.54);
 }
 
 .field {
@@ -1375,6 +1510,12 @@
   background: rgba(255, 255, 255, 0.92);
   color: var(--text);
   padding: 13px 14px;
+}
+
+.page--compose--tags .field__input {
+  min-height: 52px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.84);
 }
 
 .color-chip {
@@ -1448,7 +1589,7 @@
 .color-picker-inline {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px;
   flex-wrap: nowrap;
 }
@@ -1457,6 +1598,11 @@
 .compose-stage-back,
 .compose-submit-button {
   min-height: 42px;
+}
+
+.compose-confirm-button,
+.compose-submit-button {
+  border-radius: 20px;
 }
 
 .compose-disclosure--inline {
@@ -1553,8 +1699,8 @@
 .template-thumb-track {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: var(--template-thumb-size, 56px);
-  gap: var(--template-gap, 6px);
+  grid-auto-columns: var(--template-thumb-size, 64px);
+  gap: var(--template-gap, 8px);
 }
 
 .color-chip-track {
@@ -1573,9 +1719,9 @@
 .template-thumb {
   position: relative;
   display: block;
-  padding: 4px;
+  padding: 5px;
   min-width: 0;
-  border-radius: 0;
+  border-radius: 16px;
   border: 1px solid rgba(229, 206, 195, 0.95);
   background: rgba(255, 255, 255, 0.88);
   scroll-snap-align: center;
@@ -1637,7 +1783,7 @@
 
 .template-thumb__preview {
   aspect-ratio: 4 / 5;
-  border-radius: 0;
+  border-radius: 12px;
 }
 
 .template-option__preview::before,
@@ -1821,11 +1967,11 @@
 .template-carousel {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   min-height: 0;
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
 }
 
 .template-carousel__viewport {
@@ -1833,8 +1979,8 @@
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
-  width: calc((var(--template-thumb-size, 56px) * 4) + (var(--template-gap, 6px) * 3));
-  max-width: calc(100vw - 210px);
+  width: 100%;
+  max-width: none;
 }
 
 .template-carousel__viewport::-webkit-scrollbar {
@@ -1842,8 +1988,8 @@
 }
 
 .template-carousel__nav {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 1px solid rgba(229, 206, 195, 0.95);
   background: rgba(255, 255, 255, 0.92);
@@ -1861,7 +2007,7 @@
 
 .compose-submit-button {
   width: 100%;
-  padding: 0 14px;
+  padding: 0 18px;
 }
 
 .compose-sheet[data-template='page2'] .compose-sheet__outline {
@@ -2543,8 +2689,8 @@
   }
 
   .page--compose--select {
-    gap: 6px;
-    padding-top: 46px;
+    gap: 0;
+    padding-top: 0;
   }
 
   .page--compose--select .page-back--icon {
@@ -2585,8 +2731,20 @@
     padding: 14px;
   }
 
+  .page--compose--edit .compose-preview--editor {
+    padding: 0 !important;
+  }
+
+  .page--compose--edit .compose-sheet {
+    width: min(100%, calc((100dvh - 18px) * (210 / 297)));
+    max-height: calc(100dvh - 18px);
+  }
+
   .compose-preview--select {
-    padding: 4px 4px 2px;
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 52px)
+      12px
+      20px;
   }
 
   .compose-group--template {
@@ -2600,7 +2758,8 @@
   }
 
   .compose-preview--select .compose-sheet {
-    width: min(58vw, 228px);
+    width: min(100%, calc((100dvh - 244px) * (210 / 297)));
+    max-height: calc(100dvh - 244px);
   }
 
   .compose-slot__plus {
@@ -2630,6 +2789,21 @@
   .compose-group__head--template-select {
     flex-wrap: wrap;
     align-items: flex-start;
+  }
+
+  .compose-group--template-select {
+    padding:
+      16px
+      12px
+      calc(env(safe-area-inset-bottom, 0px) + 14px);
+    border-radius: 24px 24px 0 0;
+  }
+
+  .page--compose--tags .compose-form--tags {
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 58px)
+      12px
+      calc(env(safe-area-inset-bottom, 0px) + 14px);
   }
 
   .compose-confirm-button {
@@ -2698,7 +2872,9 @@
   }
 
   .compose-flow-actions--editor {
-    margin: -14px 0 0;
+    left: 12px;
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom) + 12px);
   }
 
   .page--compose--edit .compose-custom-tools {

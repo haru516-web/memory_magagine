@@ -31,6 +31,17 @@ function reduceStateForQuota(state) {
           : post?.composeData ?? null,
       }))
       : [],
+    drafts: Array.isArray(state.drafts)
+      ? state.drafts.map((draft) => ({
+        ...draft,
+        composeData: draft?.composeData && typeof draft.composeData === 'object'
+          ? {
+            ...draft.composeData,
+            standardFiles: shrinkComposeStandardFiles(draft.composeData.standardFiles),
+          }
+          : draft?.composeData ?? null,
+      }))
+      : [],
   };
 }
 
