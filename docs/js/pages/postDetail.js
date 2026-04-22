@@ -7,7 +7,9 @@ export function renderPostDetail(post, options = {}) {
     return `
       <section class="page page--post-detail">
         <header class="page-header page-header--with-back">
-          <button class="button button--ghost page-back" type="button" data-close-post-detail>Back</button>
+          <button class="button button--ghost page-back page-back--icon" type="button" data-close-post-detail aria-label="Back">
+            ${getIcon('returnLeft')}
+          </button>
           <div>
             <p class="page-header__mini">post view</p>
             <h2 class="page-header__title">Post</h2>
@@ -26,7 +28,9 @@ export function renderPostDetail(post, options = {}) {
   return `
     <section class="page page--post-detail">
       <header class="page-header page-header--with-back">
-        <button class="button button--ghost page-back" type="button" data-close-post-detail>Back</button>
+        <button class="button button--ghost page-back page-back--icon" type="button" data-close-post-detail aria-label="Back">
+          ${getIcon('returnLeft')}
+        </button>
         <div>
           <p class="page-header__mini">post view</p>
           <h2 class="page-header__title">Post</h2>

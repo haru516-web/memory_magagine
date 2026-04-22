@@ -35,8 +35,10 @@ textarea {
 }
 
 .app-shell--embedded {
-  min-height: auto;
+  min-height: 100dvh;
+  height: 100dvh;
   padding: 0;
+  background: transparent;
 }
 
 .chrome-bar {
@@ -281,10 +283,10 @@ textarea {
 }
 
 .canvas-area--embedded {
-  min-height: min(70vh, 820px);
+  min-height: 100dvh;
   overflow: auto;
   display: grid;
-  place-items: start center;
+  place-items: center;
   touch-action: pan-y;
 }
 
@@ -333,10 +335,24 @@ textarea {
   height: 1123px;
   background: #fbfaf6;
   color: #111111;
-  border-radius: 18px;
+  border-radius: 0;
   overflow: hidden;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
   touch-action: none;
+}
+
+.app-shell--embedded .workspace,
+.app-shell--embedded .canvas-area,
+.app-shell--embedded .canvas-area--embedded {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.app-shell--embedded .page {
+  box-shadow: none;
 }
 
 .page__guides {
@@ -520,7 +536,7 @@ textarea {
 
 @media (max-width: 720px) {
   .canvas-area--embedded {
-    min-height: min(58vh, 560px);
+    min-height: 100dvh;
     padding: 0;
   }
 

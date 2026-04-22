@@ -9,10 +9,71 @@ const TEMPLATE_COLORS = [
   { value: '#e5ece7', label: 'Sage' },
 ];
 
+const FIXED_COMPOSE_TEMPLATES = COMPOSE_TEMPLATES.filter((template) => template.id !== 'page8');
+
+const COMPOSE_TEXT_FONT_GROUPS = [
+  {
+    label: 'ショートテキスト用',
+    options: [
+      { id: 'noto-sans-jp', label: 'Noto Sans JP' },
+      { id: 'zen-kaku-gothic-new', label: 'Zen Kaku Gothic New' },
+      { id: 'biz-udgothic', label: 'BIZ UDGothic' },
+      { id: 'kosugi-maru', label: 'Kosugi Maru' },
+      { id: 'line-seed-jp', label: 'LINE Seed JP' },
+    ],
+  },
+  {
+    label: 'タイトル用',
+    options: [
+      { id: 'sawarabi-mincho', label: 'Sawarabi Mincho' },
+      { id: 'hina-mincho', label: 'Hina Mincho' },
+      { id: 'source-han-serif', label: 'Source Han Serif' },
+      { id: 'shippori-mincho', label: 'Shippori Mincho' },
+      { id: 'zen-old-mincho', label: 'Zen Old Mincho' },
+    ],
+  },
+];
+
+const COMPOSE_TEXT_FONT_STACKS = {
+  'noto-sans-jp': `'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif`,
+  'zen-kaku-gothic-new': `'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', sans-serif`,
+  'biz-udgothic': `'BIZ UDGothic', 'Yu Gothic', sans-serif`,
+  'kosugi-maru': `'Kosugi Maru', 'Hiragino Maru Gothic ProN', sans-serif`,
+  'line-seed-jp': `'LINE Seed JP', 'Noto Sans JP', 'Hiragino Sans', sans-serif`,
+  'sawarabi-mincho': `'Sawarabi Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+  'hina-mincho': `'Hina Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+  'source-han-serif': `'Source Han Serif', 'Source Han Serif JP', 'Noto Serif JP', serif`,
+  'shippori-mincho': `'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+  'zen-old-mincho': `'Zen Old Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+};
+
+function getComposeMode(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
+  return selectedTemplateId === 'page8' ? 'custom' : 'template';
+}
+
+function buildComposeTextStyleAttr(textStyles = {}, fieldKey) {
+  const source = textStyles?.[fieldKey] || {};
+  const scale = Number.isFinite(Number(source.scale))
+    ? Math.min(1.4, Math.max(0.8, Number(source.scale)))
+    : 1;
+  const fontStack = source.family && COMPOSE_TEXT_FONT_STACKS[source.family]
+    ? `--compose-font-stack:${COMPOSE_TEXT_FONT_STACKS[source.family]};`
+    : '';
+  return `style="--compose-text-scale:${scale};${fontStack}"`;
+}
+
 function renderComposeBackButton(actionAttr) {
   return `
-    <button class="button button--ghost page-back page-back--icon" type="button" ${actionAttr} aria-label="Back">
+    <button class="button button--ghost page-back page-back--icon compose-back-button" type="button" ${actionAttr} aria-label="Back">
       ${getIcon('returnLeft')}
+    </button>
+  `;
+}
+
+function renderComposeCloseButton(actionAttr) {
+  return `
+    <button class="button button--ghost page-back page-back--icon compose-close-button" type="button" ${actionAttr} aria-label="Close">
+      ${getIcon('close')}
     </button>
   `;
 }
@@ -75,7 +136,7 @@ function renderComposeDeleteButton() {
 function renderComposeTagsButton(isEditing) {
   return `
     <button class="button button--primary compose-header-tags-button" type="button" data-compose-stage-nav="tags">
-      ${isEditing ? 'Update Tags' : 'タグへ進む'}
+      ${isEditing ? 'Update Tags' : 'Tags'}
     </button>
   `;
 }
@@ -100,11 +161,10 @@ function renderGroup(groupKey, options, selectedTags = []) {
 
 function renderTemplatePicker(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
   return `
-    <div class="template-carousel">
-      <button class="template-carousel__nav" type="button" data-template-carousel-nav="prev" aria-label="Previous template">&larr;</button>
+    <div class="template-carousel template-carousel--select">
       <div class="template-carousel__viewport" data-template-carousel>
         <div class="template-thumb-track">
-          ${COMPOSE_TEMPLATES.map((template) => `
+          ${FIXED_COMPOSE_TEMPLATES.map((template) => `
             <label class="template-thumb ${selectedTemplateId === template.id ? 'is-active' : ''}">
               <input type="radio" name="templateId" value="${template.id}" ${selectedTemplateId === template.id ? 'checked' : ''} />
               <span class="template-thumb__preview template-option__preview template-option__preview--${template.id}" aria-hidden="true"></span>
@@ -112,7 +172,6 @@ function renderTemplatePicker(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
           `).join('')}
         </div>
       </div>
-      <button class="template-carousel__nav" type="button" data-template-carousel-nav="next" aria-label="Next template">&rarr;</button>
     </div>
   `;
 }
@@ -166,11 +225,17 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
   const baseClass = editable ? 'compose-sheet' : 'compose-sheet compose-sheet--locked';
   const sheetClass = isCustomTemplate ? `${baseClass} compose-sheet--custom` : baseClass;
   const editableAttr = editable ? 'true' : 'false';
+  const textStyles = values.textStyles || {};
 
   if (isCustomTemplate) {
     return `
       <div class="${sheetClass}" id="composeSheet" data-template="${selectedId}" style="--sheet-bg:${selectedBackground};">
         <div class="compose-sheet__frame">
+          <div class="compose-sheet__custom-preview" aria-hidden="true">
+            <span class="compose-sheet__custom-eyebrow">Custom</span>
+            <strong>Free image and text layout</strong>
+            <p>Add, move, resize, and crop freely on a fixed A4 page.</p>
+          </div>
           <div class="compose-custom-canvas" data-custom-canvas hidden></div>
         </div>
       </div>
@@ -191,6 +256,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'headline')}
         >${values.headline}</div>
         <div
           class="compose-sheet__subhead compose-editable"
@@ -200,6 +266,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'subhead')}
         >${values.subhead}</div>
         <div
           class="compose-sheet__notes compose-editable"
@@ -208,6 +275,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-max-chars="72"
           contenteditable="${editableAttr}"
           spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'intro')}
         >${values.intro}</div>
         ${interactiveSlots
           ? renderUploadSlot({ id: 'imageInputSecondary', slotClass: 'compose-slot--secondary' })
@@ -225,6 +293,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-max-chars="120"
           contenteditable="${editableAttr}"
           spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'body')}
         >${values.body}</div>
         <div
           class="compose-sheet__date compose-editable"
@@ -234,6 +303,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'date')}
         >${values.date}</div>
         <div
           class="compose-sheet__editor compose-editable"
@@ -243,30 +313,10 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'editor')}
         >${values.editor}</div>
       </div>
     </div>
-  `;
-}
-
-function renderTagPanel(selectedFixedTags, freeTagsValue) {
-  return `
-    <section class="compose-disclosure compose-disclosure--inline">
-      <button class="compose-disclosure__button" type="button" data-toggle-compose-tags aria-expanded="false">
-        タグ
-      </button>
-      <div class="compose-disclosure__panel" data-compose-tags hidden>
-        ${Object.entries(TAG_GROUPS).map(([groupKey, options]) => renderGroup(groupKey, options, selectedFixedTags)).join('')}
-        <section class="compose-group compose-group--tags">
-          <div class="compose-group__head">
-            <h3>Free Tags</h3>
-          </div>
-          <label class="field">
-            <input class="field__input" type="text" name="freeTags" placeholder="cafe, spring, film" value="${freeTagsValue}" />
-          </label>
-        </section>
-      </div>
-    </section>
   `;
 }
 
@@ -289,14 +339,76 @@ function renderTagsStagePanel(selectedFixedTags, freeTagsValue) {
   `;
 }
 
-function renderSelectionScreen({ values, selectedId, selectedBackground, headerMini, headerTitle }) {
+function renderComposeModeSwitch(activeMode) {
+  return `
+    <div class="compose-mode-switch" role="tablist" aria-label="Choose compose mode">
+      <button
+        class="compose-mode-switch__button ${activeMode === 'template' ? 'is-active' : ''}"
+        type="button"
+        data-compose-mode="template"
+        aria-pressed="${activeMode === 'template'}"
+      >
+        Template
+      </button>
+      <button
+        class="compose-mode-switch__button ${activeMode === 'custom' ? 'is-active' : ''}"
+        type="button"
+        data-compose-mode="custom"
+        aria-pressed="${activeMode === 'custom'}"
+      >
+        Custom
+      </button>
+    </div>
+  `;
+}
+
+function renderFixedTextTray() {
+  return `
+    <section class="compose-text-tray" data-compose-text-tray hidden>
+      <button class="compose-text-tray__handle" type="button" data-compose-text-tray-close aria-label="Hide text settings"></button>
+      <div class="compose-text-tray__section">
+        <div class="compose-text-tray__heading">
+          <span>Font</span>
+          <strong data-compose-text-target>Text</strong>
+        </div>
+        ${COMPOSE_TEXT_FONT_GROUPS.map((group) => `
+          <div class="compose-text-tray__font-group">
+            <span class="compose-text-tray__group-label">${group.label}</span>
+            <div class="compose-text-tray__options">
+              ${group.options.map((option) => `
+                <button class="compose-text-tray__option" type="button" data-compose-text-font="${option.id}">
+                  ${option.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="compose-text-tray__section">
+        <div class="compose-text-tray__heading">
+          <span>Size</span>
+          <strong data-compose-text-size-value>100%</strong>
+        </div>
+        <div class="compose-text-tray__slider">
+          <span>A</span>
+          <input type="range" min="80" max="140" step="1" value="100" data-compose-text-size />
+          <span class="compose-text-tray__slider-large">A</span>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderSelectionScreen({ values, selectedId, selectedBackground }) {
+  const selectionMode = getComposeMode(selectedId);
+  const fixedSelectionId = selectionMode === 'custom' ? DEFAULT_COMPOSE_TEMPLATE : selectedId;
+
   return `
     <section class="page page--compose page--compose--select" data-compose-stage="select">
-      <header class="page-header page-header--with-back page-header--compose">
+      <header class="page-header page-header--with-back page-header--compose compose-stage-header">
         ${renderComposeBackButton('data-close-compose')}
-        <div>
-          <p class="page-header__mini">${headerMini}</p>
-          <h2 class="page-header__title">${headerTitle}</h2>
+        <div class="compose-stage-header__title-wrap">
+          ${renderComposeModeSwitch(selectionMode)}
         </div>
       </header>
 
@@ -304,60 +416,59 @@ function renderSelectionScreen({ values, selectedId, selectedBackground, headerM
         <section class="compose-preview compose-preview--select">
           ${renderComposeSheet(values, selectedId, selectedBackground, { editable: false, interactiveSlots: false })}
         </section>
-
-        <section class="compose-group compose-group--template compose-group--template-select">
-          <div class="compose-group__head compose-group__head--template compose-group__head--template-select">
-            <h3>Template</h3>
+        <section class="compose-select-rail">
+          ${selectionMode === 'custom' ? '' : renderTemplatePicker(fixedSelectionId)}
+          <div class="compose-select-rail__footer">
             ${renderColorPicker(selectedBackground)}
-            <button class="button button--primary compose-confirm-button" type="button" data-compose-stage-nav="edit">編集する</button>
+            <button class="button button--primary compose-confirm-button" type="button" data-compose-stage-nav="edit">Edit</button>
           </div>
-          ${renderTemplatePicker(selectedId)}
         </section>
       </section>
     </section>
   `;
 }
 
-function renderEditorScreen({ values, selectedId, selectedBackground, isEditing, headerMini, headerTitle }) {
+function renderEditorScreen({ values, selectedId, selectedBackground, isEditing }) {
+  const isCustomTemplate = selectedId === 'page8';
+
   return `
-    <section class="page page--compose page--compose--edit ${selectedId === 'page8' ? 'page--compose--edit--page8' : ''}" data-compose-stage="edit">
-      <header class="page-header page-header--with-back page-header--compose">
+    <section class="page page--compose page--compose--edit ${isCustomTemplate ? 'page--compose--edit--page8' : ''}" data-compose-stage="edit">
+      <header class="page-header page-header--with-back page-header--compose compose-stage-header compose-stage-header--edit">
         <div class="page-header__actions page-header__actions--compose">
           ${renderComposeBackButton('data-compose-stage-nav="select"')}
-          ${selectedId === 'page8' ? renderComposeAddPopoverButton() : ''}
-          ${selectedId === 'page8' ? renderComposeDeleteButton() : ''}
-          ${selectedId === 'page8' ? renderComposeTagsButton(isEditing) : ''}
+          ${isCustomTemplate ? renderComposeAddPopoverButton() : ''}
+          ${isCustomTemplate ? renderComposeDeleteButton() : ''}
+          ${isCustomTemplate ? renderComposeTagsButton(isEditing) : ''}
         </div>
-        <div>
-          <p class="page-header__mini">${headerMini}</p>
-          <h2 class="page-header__title">${headerTitle}</h2>
+        <div class="compose-stage-header__title-wrap">
+          ${isCustomTemplate ? '' : '<h2 class="page-header__title compose-stage-header__title">Edit Page</h2>'}
         </div>
       </header>
 
       <form class="compose-form compose-form--edit" id="composeForm">
-        <section class="compose-editor compose-editor--focus ${selectedId === 'page8' ? 'compose-editor--page8' : ''}">
-          <section class="compose-preview compose-preview--editor ${selectedId === 'page8' ? 'compose-preview--page8' : ''}">
-            ${selectedId === 'page8'
-              ? `
-                <div class="compose-pretext-host compose-pretext-host--page8" data-compose-pretext-host></div>
-              `
+        <section class="compose-editor compose-editor--focus ${isCustomTemplate ? 'compose-editor--page8' : ''}">
+          <section class="compose-preview compose-preview--editor ${isCustomTemplate ? 'compose-preview--page8' : ''}">
+            ${isCustomTemplate
+              ? '<div class="compose-pretext-host compose-pretext-host--page8" data-compose-pretext-host></div>'
               : renderComposeSheet(values, selectedId, selectedBackground, { editable: true, interactiveSlots: true })}
           </section>
+          ${isCustomTemplate ? '' : `
+            <div class="compose-flow-actions compose-flow-actions--editor">
+              <button class="button button--ghost compose-draft-button" type="button" data-save-compose-draft>Save Draft</button>
+              <button class="button button--primary compose-submit-button" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'Tags'}</button>
+            </div>
+          `}
+          ${isCustomTemplate ? '' : renderFixedTextTray()}
         </section>
-        ${selectedId === 'page8' ? '' : `
-          <div class="compose-flow-actions compose-flow-actions--editor">
-            <button class="button button--primary compose-submit-button" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'タグへ進む'}</button>
-          </div>
-        `}
-        <section class="compose-custom-tools" data-custom-template-controls hidden ${selectedId === 'page8' ? 'style="display:none"' : ''}>
+        <section class="compose-custom-tools" data-custom-template-controls hidden ${isCustomTemplate ? 'style="display:none"' : ''}>
           <div class="compose-custom-tools__header">
             <p class="compose-custom-tools__eyebrow">Pretext-inspired editorial controls</p>
             <h3 class="compose-custom-tools__title">Custom Layout</h3>
-            <p class="compose-custom-tools__hint">画像はフレーム移動とクロップを切替、文字はタイトル/本文プリセットと行間・余白を調整できます。</p>
+            <p class="compose-custom-tools__hint">Add, crop, and arrange image or text blocks freely on the page while keeping the page size fixed.</p>
           </div>
           <div class="compose-custom-tools__buttons">
-            <button class="button button--ghost" type="button" data-custom-add="image">画像追加</button>
-            <button class="button button--ghost" type="button" data-custom-add="text">文字追加</button>
+            <button class="button button--ghost" type="button" data-custom-add="image">Add Image</button>
+            <button class="button button--ghost" type="button" data-custom-add="text">Add Text</button>
           </div>
           <section class="compose-custom-inspector" data-custom-inspector></section>
         </section>
@@ -366,15 +477,15 @@ function renderEditorScreen({ values, selectedId, selectedBackground, isEditing,
   `;
 }
 
-function renderTagScreen({ selectedId, selectedBackground, selectedFixedTags, freeTagsValue, submitLabel, isEditing, headerMini, headerTitle }) {
+function renderTagScreen({ selectedFixedTags, freeTagsValue, submitLabel }) {
   return `
     <section class="page page--compose page--compose--tags" data-compose-stage="tags">
-      <header class="page-header page-header--with-back page-header--compose">
+      <header class="page-header page-header--with-back page-header--compose compose-stage-header">
         ${renderComposeBackButton('data-compose-stage-nav="edit"')}
-        <div>
-          <p class="page-header__mini">${headerMini}</p>
-          <h2 class="page-header__title">${headerTitle}</h2>
+        <div class="compose-stage-header__title-wrap">
+          <h2 class="page-header__title compose-stage-header__title">Tags</h2>
         </div>
+        ${renderComposeCloseButton('data-close-compose')}
       </header>
 
       <form class="compose-form compose-form--tags" id="composeForm">
@@ -401,15 +512,14 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
     intro: draft.intro || 'text',
     body: draft.body || 'text',
     date: draft.date || 'text',
-    editor: draft.editor || '編集者：haru',
+    editor: draft.editor || '編集者 : haru',
+    textStyles: draft.textStyles || {},
   };
   const selectedId = options.selectedTemplateId || draft.templateId || DEFAULT_COMPOSE_TEMPLATE;
   const selectedBackground = options.selectedBackground || draft.backgroundColor || '#f8f4ee';
   const selectedFixedTags = Array.isArray(draft.fixedTags) ? draft.fixedTags : [];
   const freeTagsValue = Array.isArray(draft.freeTags) ? draft.freeTags.join(', ') : (draft.freeTags || '');
   const submitLabel = options.isEditing ? 'Update Post' : 'Post This Layout';
-  const headerMini = options.isEditing ? 'post editor' : 'template editor';
-  const headerTitle = options.isEditing ? 'Edit Post' : 'Compose';
   const stage = options.stage || 'select';
 
   if (stage === 'select') {
@@ -417,21 +527,14 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
       values,
       selectedId,
       selectedBackground,
-      headerMini,
-      headerTitle,
     });
   }
 
   if (stage === 'tags') {
     return renderTagScreen({
-      selectedId,
-      selectedBackground,
       selectedFixedTags,
       freeTagsValue,
       submitLabel,
-      isEditing: Boolean(options.isEditing),
-      headerMini,
-      headerTitle,
     });
   }
 
@@ -440,7 +543,5 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
     selectedId,
     selectedBackground,
     isEditing: Boolean(options.isEditing),
-    headerMini,
-    headerTitle,
   });
 }

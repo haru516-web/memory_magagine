@@ -519,14 +519,17 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
     const container = canvasAreaRef.current
     if (!container) return
 
-    const updateScale = () => {
-      const styles = window.getComputedStyle(container)
-      const paddingX = Number.parseFloat(styles.paddingLeft || '0') + Number.parseFloat(styles.paddingRight || '0')
-      const availableWidth = Math.max(1, container.clientWidth - paddingX)
-      const widthFitScale = availableWidth / PAGE_WIDTH
-      const nextScale = Math.min(1, widthFitScale * 1.06)
-      setEmbeddedScale(nextScale)
-    }
+      const updateScale = () => {
+        const styles = window.getComputedStyle(container)
+        const paddingX = Number.parseFloat(styles.paddingLeft || '0') + Number.parseFloat(styles.paddingRight || '0')
+        const paddingY = Number.parseFloat(styles.paddingTop || '0') + Number.parseFloat(styles.paddingBottom || '0')
+        const availableWidth = Math.max(1, container.clientWidth - paddingX)
+        const availableHeight = Math.max(1, container.clientHeight - paddingY)
+        const widthFitScale = availableWidth / PAGE_WIDTH
+        const heightFitScale = availableHeight / PAGE_HEIGHT
+        const nextScale = Math.min(1, widthFitScale, heightFitScale)
+        setEmbeddedScale(nextScale)
+      }
 
     updateScale()
     const observer = new ResizeObserver(() => updateScale())

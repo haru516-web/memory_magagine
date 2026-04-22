@@ -1,6 +1,56 @@
 import './pretextComposeBridge.css';
 import { getDefaultPretextBoxes, serializePretextBoxes } from './pretextLayoutAdapter.js';
 
+const EMBEDDED_PRETEXT_STYLE_ID = 'memories-pretext-embedded-overrides';
+const EMBEDDED_PRETEXT_BACKGROUND = '#f8f3ed';
+const EMBEDDED_PRETEXT_STYLE = `
+html,
+body,
+#root {
+  background: ${EMBEDDED_PRETEXT_BACKGROUND} !important;
+}
+
+html,
+body {
+  margin: 0 !important;
+  min-height: 100% !important;
+}
+
+body::before,
+body::after {
+  display: none !important;
+}
+
+.app-shell,
+.app-shell--embedded,
+.workspace,
+.canvas-area,
+.canvas-area--embedded,
+.page-stage-shell,
+.page-stage,
+.page-shadow {
+  background: ${EMBEDDED_PRETEXT_BACKGROUND} !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.app-shell--embedded,
+.canvas-area--embedded {
+  min-height: 100dvh !important;
+  height: 100dvh !important;
+  padding: 0 !important;
+}
+
+.canvas-area--embedded {
+  place-items: center !important;
+}
+
+.page {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+`;
+
 function getTargetOrigin() {
   return window.location.origin === 'null' ? '*' : window.location.origin;
 }
@@ -20,9 +70,32 @@ export function mountComposePretextEditor(container, options = {}) {
   frame.title = 'Pretext editor';
   frame.setAttribute('loading', 'eager');
   frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+  frame.setAttribute('allowtransparency', 'true');
   container.replaceChildren(frame);
 
+  const applyEmbeddedOverrides = () => {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    const root = doc.documentElement;
+    const body = doc.body;
+    if (!root || !body) return;
+
+    root.style.setProperty('background', EMBEDDED_PRETEXT_BACKGROUND, 'important');
+    body.style.setProperty('background', EMBEDDED_PRETEXT_BACKGROUND, 'important');
+    root.style.setProperty('color-scheme', 'light', 'important');
+    body.style.setProperty('color-scheme', 'light', 'important');
+
+    let styleTag = doc.getElementById(EMBEDDED_PRETEXT_STYLE_ID);
+    if (!styleTag) {
+      styleTag = doc.createElement('style');
+      styleTag.id = EMBEDDED_PRETEXT_STYLE_ID;
+      styleTag.textContent = EMBEDDED_PRETEXT_STYLE;
+      doc.head.appendChild(styleTag);
+    }
+  };
+
   const sendInit = () => {
+    applyEmbeddedOverrides();
     frame.contentWindow?.postMessage(
       {
         type: 'memories:pretext:init',
@@ -39,6 +112,7 @@ export function mountComposePretextEditor(container, options = {}) {
     if (!payload || typeof payload !== 'object') return;
 
     if (payload.type === 'memories:pretext:ready') {
+      applyEmbeddedOverrides();
       sendInit();
       return;
     }

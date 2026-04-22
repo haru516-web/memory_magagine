@@ -21,6 +21,9 @@ function EmbeddedPretextPage() {
   const [externalCommand, setExternalCommand] = useState(null);
 
   useEffect(() => {
+    document.documentElement.classList.add('pretext-embedded-root');
+    document.body.classList.add('pretext-embedded-body');
+
     const handleMessage = (event) => {
       if (!isAcceptedMessageOrigin(event.origin)) return;
       const payload = event.data;
@@ -39,6 +42,8 @@ function EmbeddedPretextPage() {
     window.parent?.postMessage({ type: 'memories:pretext:ready' }, getTargetOrigin());
 
     return () => {
+      document.documentElement.classList.remove('pretext-embedded-root');
+      document.body.classList.remove('pretext-embedded-body');
       window.removeEventListener('message', handleMessage);
     };
   }, []);

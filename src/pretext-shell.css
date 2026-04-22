@@ -1,3 +1,18 @@
+.pretext-embedded-root,
+.pretext-embedded-body,
+.pretext-embedded-body #root {
+  background: transparent !important;
+}
+
+.pretext-embedded-body {
+  min-height: 100dvh;
+}
+
+.pretext-embedded-body::before,
+.pretext-embedded-body::after {
+  display: none !important;
+}
+
 .pretext-page__chrome {
   position: sticky;
   top: 0;
