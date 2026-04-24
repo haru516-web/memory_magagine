@@ -23,7 +23,7 @@ export function renderBottomNav(screen) {
         ${isSearchActive ? '<span class="timeline-bottom-nav__dot" aria-hidden="true"></span>' : ''}
       </button>
       <button class="timeline-bottom-nav__item timeline-bottom-nav__item--compose" type="button" data-home-nav="compose" aria-label="Create post">
-        <span class="timeline-bottom-nav__icon" aria-hidden="true">${getIcon('compose')}</span>
+        <span class="timeline-bottom-nav__icon" aria-hidden="true">${getIcon('post')}</span>
         <span class="timeline-bottom-nav__label">Post</span>
       </button>
       <button class="timeline-bottom-nav__item" type="button" data-home-nav="home" aria-label="Open settings">

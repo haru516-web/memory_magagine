@@ -435,6 +435,11 @@
   height: 14px;
 }
 
+.icon-button .feature-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .icon-button.is-active,
 .button--ghost.is-active {
   color: var(--control-accent-text);

@@ -27,13 +27,13 @@ function getPostTitle(post) {
 
 function getPostExcerpt(post) {
   const caption = String(post.caption || '').trim();
-  if (!caption) return 'A quiet page to keep one memory close.';
-  return caption.length > 78 ? `${caption.slice(0, 78)}...` : caption;
+  if (!caption) return '静かな記録をそっと残した一頁です。';
+  return caption.length > 84 ? `${caption.slice(0, 84)}...` : caption;
 }
 
 function getPostLocation(post) {
   const tags = [...(post.fixedTags || []), ...(post.freeTags || [])].filter(Boolean);
-  return tags[0] || '記録した場所';
+  return tags[0] || '場所未設定';
 }
 
 function formatCardDateParts(isoDate) {
@@ -105,6 +105,7 @@ function renderSearchResultCard(post) {
   const excerpt = getPostExcerpt(post);
   const location = getPostLocation(post);
   const date = formatCardDateParts(post.createdAt);
+
   return `
     <article class="search-result-card" data-post-id="${post.id}">
       <button class="search-result-card__body" type="button" data-open-preview="${post.id}" aria-label="Open ${title}">
@@ -141,39 +142,52 @@ function renderSearchResultCard(post) {
 export function renderSearch(state, uiState) {
   const selectedTags = uiState.searchTags || [];
   const activeSort = uiState.searchSort || 'popular';
-  const filteredPosts = filterPosts(state.posts || [], { query: uiState.searchQuery || '', tags: selectedTags });
+  const filteredPosts = filterPosts(state.posts || [], {
+    query: uiState.searchQuery || '',
+    tags: selectedTags,
+  });
   const posts = sortSearchPosts(filteredPosts, activeSort);
   const resultsMarkup = posts.length
     ? `
-      <div class="search-results-grid">
-        ${posts.map((post) => renderSearchResultCard(post)).join('')}
-      </div>
+      <section class="search-results">
+        <div class="search-results-grid">
+          ${posts.map((post) => renderSearchResultCard(post)).join('')}
+        </div>
+      </section>
     `
     : `
       <section class="search-empty">
         <p class="search-empty__title">見つかる投稿がまだありません</p>
-        <p class="search-empty__copy">作者名・タグ・キャプションの組み合わせを変えて探してみてください。</p>
+        <p class="search-empty__copy">作者名・タグ・キャプションの組み合わせを変えて、静かな記録を探してみてください。</p>
       </section>
     `;
 
   return `
     <section class="page page--search">
       <div class="search-shell">
-        <div class="search-shell__field">
-          <span class="search-shell__field-icon">${getIcon('searchLine')}</span>
-          <input class="search-shell__input" id="searchInput" type="search" value="${uiState.searchQuery || ''}" placeholder="作者名・タグ・キャプションで検索" />
+        <div class="search-shell__surface">
+          <div class="search-shell__field">
+            <span class="search-shell__field-icon">${getIcon('searchLine')}</span>
+            <input
+              class="search-shell__input"
+              id="searchInput"
+              type="search"
+              value="${uiState.searchQuery || ''}"
+              placeholder="作者名・タグ・キャプションで検索"
+            />
+          </div>
+
+          ${renderSearchSection('シーンで探す', SEARCH_SCENE_TAGS, selectedTags, { sectionKey: 'scene' })}
+          ${renderSearchSection('気分で探す', SEARCH_MOOD_TAGS, selectedTags, { withIcons: true, sectionKey: 'mood' })}
+
+          <div class="search-sort-bar" role="tablist" aria-label="Search sorting">
+            ${renderSortButton('popular', '人気順', activeSort)}
+            ${renderSortButton('new', '新着', activeSort)}
+            ${renderSortButton('place', '場所', activeSort, 'filter')}
+          </div>
+
+          ${resultsMarkup}
         </div>
-
-        ${renderSearchSection('シーンで探す', SEARCH_SCENE_TAGS, selectedTags, { sectionKey: 'scene' })}
-        ${renderSearchSection('気分で探す', SEARCH_MOOD_TAGS, selectedTags, { withIcons: true, sectionKey: 'mood' })}
-
-        <div class="search-sort-bar" role="tablist" aria-label="Search sorting">
-          ${renderSortButton('popular', '人気順', activeSort)}
-          ${renderSortButton('new', '新着', activeSort)}
-          ${renderSortButton('place', '場所', activeSort, 'sliders')}
-        </div>
-
-        ${resultsMarkup}
       </div>
     </section>
   `;

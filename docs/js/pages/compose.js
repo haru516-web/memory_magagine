@@ -10,7 +10,9 @@ const TEMPLATE_COLORS = [
   { value: '#e5ece7', label: 'Sage' },
 ];
 
-const FIXED_COMPOSE_TEMPLATES = COMPOSE_TEMPLATES.filter((template) => template.id !== 'page8');
+const FIXED_COMPOSE_TEMPLATES = COMPOSE_TEMPLATES.filter(
+  (template) => template.id !== 'page8' && template.id !== 'page9',
+);
 
 const COMPOSE_TEXT_FONT_GROUPS = [
   {
@@ -274,6 +276,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-editable="headline"
           data-placeholder="headline"
           data-max-chars="42"
+          data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"
@@ -284,6 +287,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-editable="subhead"
           data-placeholder="subhead"
           data-max-chars="56"
+          data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"
@@ -294,6 +298,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-editable="intro"
           data-placeholder="notes"
           data-max-chars="72"
+          data-default-single-line="false"
           contenteditable="${editableAttr}"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'intro')}
@@ -315,6 +320,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-editable="body"
           data-placeholder="body"
           data-max-chars="120"
+          data-default-single-line="false"
           contenteditable="${editableAttr}"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'body')}
@@ -324,6 +330,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-editable="date"
           data-placeholder="date"
           data-max-chars="18"
+          data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"
@@ -334,6 +341,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-editable="editor"
           data-placeholder="editor"
           data-max-chars="24"
+          data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
           spellcheck="false"

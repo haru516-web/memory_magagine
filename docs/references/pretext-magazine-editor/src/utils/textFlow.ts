@@ -94,6 +94,8 @@ export function flowTextLines(box: TextBox, obstacles: Rect[]) {
   let cursor: any = { segmentIndex: 0, graphemeIndex: 0 }
   let y = top
   let safety = 0
+  let isOverflowing = false
+  let usedBottom = top
 
   while (safety < 3000) {
     safety += 1
@@ -128,6 +130,11 @@ export function flowTextLines(box: TextBox, obstacles: Rect[]) {
       width: lineWidth,
     })
 
+    usedBottom = Math.max(usedBottom, bandBottom)
+    if (bandBottom > maxBottom + 0.5) {
+      isOverflowing = true
+    }
+
     cursor = range.end
     y += box.data.lineHeight
 
@@ -142,5 +149,45 @@ export function flowTextLines(box: TextBox, obstacles: Rect[]) {
   return {
     lines,
     requiredHeight,
+    isOverflowing,
+    usedBottom,
   }
+}
+
+function cloneTextBox(box: TextBox, text: string) {
+  return {
+    ...box,
+    data: {
+      ...box.data,
+      text,
+    },
+  }
+}
+
+export function textFitsInBox(box: TextBox, obstacles: Rect[], text: string) {
+  const nextBox = cloneTextBox(box, text)
+  return !flowTextLines(nextBox, obstacles).isOverflowing
+}
+
+export function clampTextToFitBox(box: TextBox, obstacles: Rect[], text: string) {
+  const normalizedText = String(text || '').replace(/\r/g, '')
+  if (textFitsInBox(box, obstacles, normalizedText)) {
+    return normalizedText
+  }
+
+  const units = Array.from(normalizedText)
+  let low = 0
+  let high = units.length
+
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    const candidate = units.slice(0, mid).join('')
+    if (textFitsInBox(box, obstacles, candidate)) {
+      low = mid
+    } else {
+      high = mid - 1
+    }
+  }
+
+  return units.slice(0, low).join('')
 }

@@ -3,13 +3,14 @@ import { getDefaultPretextBoxes, serializePretextBoxes } from './pretextLayoutAd
 
 const EMBEDDED_PRETEXT_STYLE_ID = 'memories-pretext-embedded-overrides';
 const DEFAULT_EMBEDDED_PRETEXT_BACKGROUND = '#f8f4ee';
+const EMBEDDED_PRETEXT_STAGE_BACKGROUND = '#ffffff';
 
 function getEmbeddedPretextStyle(backgroundColor) {
   return `
 html,
 body,
 #root {
-  background: ${backgroundColor} !important;
+  background: ${EMBEDDED_PRETEXT_STAGE_BACKGROUND} !important;
 }
 
 html,
@@ -29,10 +30,8 @@ body::after {
 .canvas-area,
 .canvas-area--embedded,
 .page-stage-shell,
-.page-stage,
-.page-shadow,
-.page {
-  background: ${backgroundColor} !important;
+.page-stage {
+  background: ${EMBEDDED_PRETEXT_STAGE_BACKGROUND} !important;
   border: 0 !important;
   box-shadow: none !important;
 }
@@ -48,9 +47,25 @@ body::after {
   place-items: center !important;
 }
 
+.page-stage-shell,
+.page-stage,
+.page-shadow,
 .page {
   border-radius: 0 !important;
+}
+
+.app-shell--embedded .page-shadow,
+.page-shadow {
+  display: none !important;
+  background: transparent !important;
+  filter: none !important;
+}
+
+.app-shell--embedded .page,
+.page {
+  background: ${backgroundColor} !important;
   box-shadow: none !important;
+  outline: 0 !important;
 }
 `;
 }
@@ -85,10 +100,10 @@ export function mountComposePretextEditor(container, options = {}) {
     const body = doc.body;
     if (!root || !body) return;
 
-    frame.style.setProperty('background', currentBackgroundColor, 'important');
-    container.style.setProperty('background', currentBackgroundColor, 'important');
-    root.style.setProperty('background', currentBackgroundColor, 'important');
-    body.style.setProperty('background', currentBackgroundColor, 'important');
+    frame.style.setProperty('background', EMBEDDED_PRETEXT_STAGE_BACKGROUND, 'important');
+    container.style.setProperty('background', EMBEDDED_PRETEXT_STAGE_BACKGROUND, 'important');
+    root.style.setProperty('background', EMBEDDED_PRETEXT_STAGE_BACKGROUND, 'important');
+    body.style.setProperty('background', EMBEDDED_PRETEXT_STAGE_BACKGROUND, 'important');
     root.style.setProperty('color-scheme', 'light', 'important');
     body.style.setProperty('color-scheme', 'light', 'important');
 

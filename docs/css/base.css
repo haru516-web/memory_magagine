@@ -31,3 +31,13 @@ svg {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+.feature-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+}

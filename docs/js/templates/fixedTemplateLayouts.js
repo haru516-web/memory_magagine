@@ -32,6 +32,48 @@ function rawRect(x1, y1, x2, y2) {
   };
 }
 
+function intersectRect(primary, secondary) {
+  const x = Math.max(primary.x, secondary.x);
+  const y = Math.max(primary.y, secondary.y);
+  const right = Math.min(primary.x + primary.width, secondary.x + secondary.width);
+  const bottom = Math.min(primary.y + primary.height, secondary.y + secondary.height);
+  if (right <= x || bottom <= y) return null;
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
+  };
+}
+
+function pickExclusionSide(blockRect, overlapRect) {
+  const touchesLeft = Math.abs(overlapRect.x - blockRect.x) < 0.0001;
+  const touchesRight = Math.abs((overlapRect.x + overlapRect.width) - (blockRect.x + blockRect.width)) < 0.0001;
+  if (touchesLeft && !touchesRight) return 'left';
+  if (touchesRight && !touchesLeft) return 'right';
+  const overlapCenter = overlapRect.x + (overlapRect.width / 2);
+  const blockCenter = blockRect.x + (blockRect.width / 2);
+  return overlapCenter <= blockCenter ? 'left' : 'right';
+}
+
+function blockExclusions(blockRect, masks = []) {
+  return masks
+    .map((mask) => {
+      const overlap = intersectRect(blockRect, mask.rect);
+      if (!overlap) return null;
+      return {
+        type: mask.type,
+        side: pickExclusionSide(blockRect, overlap),
+        x: overlap.x,
+        y: overlap.y,
+        width: overlap.width,
+        height: overlap.height,
+        offsetTop: Math.max(0, overlap.y - blockRect.y),
+      };
+    })
+    .filter(Boolean);
+}
+
 function pickTextKeys(count) {
   return TEXT_KEY_ORDERS[count] || TEXT_KEY_ORDERS[6];
 }
@@ -112,11 +154,14 @@ const RAW_FIXED_TEMPLATE_LAYOUTS = {
     roughUrl: roughAsset('9.png'),
     images: [
       rawRect(0.5354, 0.1065, 0.8777, 0.4700),
-      rawRect(0.1004, 0.5300, 0.4427, 0.8935),
+      rawRect(0.1004, 0.5300, 0.4427, 0.9520),
     ],
     texts: [
-      rawRect(0.1011, 0.1065, 0.4427, 0.4700),
-      rawRect(0.5347, 0.5300, 0.8777, 0.8935),
+      {
+        ...rawRect(0.1011, 0.1065, 0.4427, 0.4700),
+        singleLine: false,
+      },
+      rawRect(0.5347, 0.5300, 0.8777, 0.9520),
     ],
     masks: [
       {
@@ -164,6 +209,10 @@ function normalizeLayoutSource(templateId) {
     id: templateId,
     roughUrl: source.roughUrl,
     safeArea: { ...FIXED_TEMPLATE_SAFE_AREA },
+    masks: (source.masks || []).map((mask) => ({
+      ...mask,
+      rect: { ...mask.rect },
+    })),
     images: source.images.map((rect, index) => ({
       key: FIXED_TEMPLATE_SLOT_KEYS[index],
       ...rect,
@@ -172,10 +221,8 @@ function normalizeLayoutSource(templateId) {
       fieldKey: textKeys[index],
       ...rect,
       align: rect.align || 'left',
-    })),
-    masks: (source.masks || []).map((mask) => ({
-      ...mask,
-      rect: { ...mask.rect },
+      singleLine: rect.singleLine,
+      exclusions: blockExclusions(rect, source.masks || []),
     })),
   };
   return layout;
@@ -290,6 +337,13 @@ export async function renderFixedTemplate(ctx, templateId, values, files, helper
       maxWidth: block.width * DESIGN_WIDTH,
       lineHeight: metrics.lineHeight,
       maxLines: metrics.maxLines,
+      align: block.align || 'left',
+      exclusions: (block.exclusions || []).map((exclusion) => ({
+        x: exclusion.x * DESIGN_WIDTH,
+        y: exclusion.y * DESIGN_HEIGHT,
+        width: exclusion.width * DESIGN_WIDTH,
+        height: exclusion.height * DESIGN_HEIGHT,
+      })),
     });
     ctx.restore();
   }

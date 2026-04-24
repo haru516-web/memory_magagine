@@ -18,10 +18,10 @@
   --control-bg-soft: rgba(249, 240, 232, 0.74);
   --control-border: rgba(229, 206, 195, 0.92);
   --control-text: #4e3d36;
-  --control-accent-bg: linear-gradient(180deg, #efcfd3, #e8bcc2);
-  --control-accent-solid: rgba(243, 215, 216, 0.88);
-  --control-accent-border: rgba(214, 140, 147, 0.6);
-  --control-accent-text: #6e474b;
+  --control-accent-bg: #111111;
+  --control-accent-solid: rgba(17, 17, 17, 0.92);
+  --control-accent-border: rgba(17, 17, 17, 0.92);
+  --control-accent-text: #ffffff;
   --input-bg: rgba(255, 255, 255, 0.92);
   --input-border: rgba(220, 197, 185, 0.96);
   --surface-soft: rgba(255, 253, 249, 0.86);
@@ -55,9 +55,9 @@
   --control-bg-soft: rgba(255, 255, 255, 0.05);
   --control-border: rgba(255, 255, 255, 0.08);
   --control-text: #f5f7fb;
-  --control-accent-bg: linear-gradient(180deg, rgba(71, 157, 255, 0.26), rgba(115, 94, 255, 0.22));
-  --control-accent-solid: rgba(71, 157, 255, 0.2);
-  --control-accent-border: rgba(113, 218, 255, 0.42);
+  --control-accent-bg: #111111;
+  --control-accent-solid: rgba(17, 17, 17, 0.92);
+  --control-accent-border: rgba(255, 255, 255, 0.2);
   --control-accent-text: #f5f7fb;
   --input-bg: rgba(11, 14, 20, 0.88);
   --input-border: rgba(255, 255, 255, 0.08);
@@ -74,8 +74,8 @@
   --line-strong: rgba(104, 228, 255, 0.42);
   --pink-strong: #67e8ff;
   --shadow: 0 20px 44px rgba(0, 18, 42, 0.22);
-  --control-accent-bg: linear-gradient(180deg, rgba(82, 223, 255, 0.24), rgba(66, 144, 255, 0.18));
-  --control-accent-solid: rgba(82, 223, 255, 0.16);
-  --control-accent-border: rgba(103, 232, 255, 0.5);
-  --control-accent-text: var(--text);
+  --control-accent-bg: #111111;
+  --control-accent-solid: rgba(17, 17, 17, 0.92);
+  --control-accent-border: rgba(17, 17, 17, 0.92);
+  --control-accent-text: #ffffff;
 }

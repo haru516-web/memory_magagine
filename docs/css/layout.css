@@ -111,7 +111,7 @@
 }
 
 .screen-area--with-bottom-nav {
-  padding-bottom: calc(env(safe-area-inset-bottom) + 88px);
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 8px);
 }
 
 .screen-area--search {

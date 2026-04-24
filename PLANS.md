@@ -131,3 +131,36 @@ Open Questions
   - Rebuild each fixed template's preview/export geometry to match the rough image box and text box positions as closely as possible.
   - Add an edit-only rough-background overlay so placement can be checked directly against the provided A4 reference.
   - Build and validate that the template picker, editor preview, and rendered export remain aligned.
+
+## Fixed Template Box Interactivity
+
+- Goal: Make every visible fixed-template box consistently interactive so users can fill all shown image and text areas.
+- Constraints:
+  - Keep the current fixed-template persistence shape (`headline/subhead/intro/body/date/editor` and `primary/secondary/accent/detail`) intact.
+  - Avoid rewriting the compose flow or replacing the fixed-template layout system.
+  - Prefer layout-driven visibility and interaction fixes over template-by-template special cases.
+- Target files:
+  - `docs/js/app.js`
+  - `docs/js/pages/compose.js`
+  - `docs/css/compose.css`
+- Steps:
+  - Audit how fixed-template text boxes and image slots are shown and hidden during layout application.
+  - Ensure only the active template boxes accept pointer input and give visible boxes explicit stacking order.
+  - Verify that text boxes are not blocked by neighboring image surfaces when templates are applied.
+  - Build and check the compose flow after the interaction changes.
+
+## Search Screen Editorial Restyle
+
+- Goal: Restyle the search screen so it matches the supplied mobile reference more closely in spacing, typography, chip sizing, and card composition.
+- Constraints:
+  - Keep current search interactions, filtering behavior, routing, and bottom navigation intact.
+  - Reuse the existing search page/render path instead of creating a parallel screen.
+  - Keep the work scoped to search-specific markup, icons, and CSS.
+- Target files:
+  - `docs/js/pages/search.js`
+  - `docs/css/search.css`
+  - `docs/js/components/icons.js`
+- Steps:
+  - Refine the search page copy and section structure to match the reference layout.
+  - Restyle the search shell, chips, sort control, and result cards to the quieter editorial look from the mock.
+  - Add any small missing icon needed for the search UI and verify the updated layout on a mobile-sized viewport.

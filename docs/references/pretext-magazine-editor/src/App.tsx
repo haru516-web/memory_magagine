@@ -6,7 +6,7 @@ import { Toolbar } from './components/Toolbar'
 import type { DragMode, EditorBox, ImageBox, ResizeHandle, TextBox } from './types'
 import { applyResize, clampRectToPage, rectOf, sortByZ, translateRect } from './utils/geometry'
 import { normalizeBoxes } from './utils/editorLayout'
-import { flowTextLines } from './utils/textFlow'
+import { clampTextToFitBox, flowTextLines } from './utils/textFlow'
 
 const CENTER_SNAP_THRESHOLD = 18
 const EMPTY_SNAP_GUIDES = { horizontal: false, vertical: false }
@@ -141,6 +141,34 @@ function localObstacles(target: TextBox, boxes: EditorBox[]) {
     }))
 }
 
+function fitTextBoxWithinLayout(input: EditorBox[], targetId: string | null) {
+  if (!targetId) return normalizeBoxes(input)
+  const normalized = normalizeBoxes(input, targetId)
+  const target = normalized.find((box) => box.id === targetId)
+  if (!target || target.kind === 'image') {
+    return normalized
+  }
+
+  const fittedText = clampTextToFitBox(target, localObstacles(target, normalized), target.data.text)
+  if (fittedText === target.data.text) {
+    return normalized
+  }
+
+  const refitted = normalized.map((box) => (
+    box.id === targetId && box.kind !== 'image'
+      ? {
+          ...box,
+          data: {
+            ...box.data,
+            text: fittedText,
+          },
+        }
+      : box
+  ))
+
+  return normalizeBoxes(refitted, targetId)
+}
+
 function handlePositions() {
   return [
     'nw', 'n', 'ne',
@@ -233,16 +261,14 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
 
   const updateSelectedText = (patch: Partial<TextBox['data']>) => {
     if (!selectedId) return
-    setBoxes((prev) =>
-      normalizeBoxes(
-        prev.map((box) =>
-          box.id === selectedId && box.kind !== 'image'
-            ? { ...box, data: { ...box.data, ...patch } }
-            : box,
-        ),
-        selectedId,
-      ),
-    )
+    setBoxes((prev) => {
+      const drafted = prev.map((box) => (
+        box.id === selectedId && box.kind !== 'image'
+          ? { ...box, data: { ...box.data, ...patch } }
+          : box
+      ))
+      return fitTextBoxWithinLayout(drafted, selectedId)
+    })
   }
 
   const updateSelectedImage = (patch: Partial<ImageBox['data']>) => {
@@ -261,26 +287,24 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
 
   const convertSelectedKind = (kind: 'title' | 'body') => {
     if (!selectedId) return
-    setBoxes((prev) =>
-      normalizeBoxes(
-        prev.map((box) => {
-          if (box.id !== selectedId || box.kind === 'image') return box
-          return {
-            ...box,
-            kind,
-            minHeight: kind === 'title' ? 90 : 140,
-            data: {
-              ...box.data,
-              fontSize: kind === 'title' ? Math.max(38, box.data.fontSize) : Math.min(24, box.data.fontSize),
-              fontWeight: kind === 'title' ? 700 : 400,
-              lineHeight: kind === 'title' ? Math.max(44, box.data.lineHeight) : Math.min(36, box.data.lineHeight),
-              align: box.data.align,
-            },
-          }
-        }),
-        selectedId,
-      ),
-    )
+    setBoxes((prev) => {
+      const drafted = prev.map((box) => {
+        if (box.id !== selectedId || box.kind === 'image') return box
+        return {
+          ...box,
+          kind,
+          minHeight: kind === 'title' ? 90 : 140,
+          data: {
+            ...box.data,
+            fontSize: kind === 'title' ? Math.max(38, box.data.fontSize) : Math.min(24, box.data.fontSize),
+            fontWeight: kind === 'title' ? 700 : 400,
+            lineHeight: kind === 'title' ? Math.max(44, box.data.lineHeight) : Math.min(36, box.data.lineHeight),
+            align: box.data.align,
+          },
+        }
+      })
+      return fitTextBoxWithinLayout(drafted, selectedId)
+    })
   }
 
   const deleteSelected = () => {

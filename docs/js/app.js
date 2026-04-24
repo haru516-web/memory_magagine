@@ -184,6 +184,10 @@ const profileAvatarDraft = {
   crop: { x: 0.5, y: 0.5, zoom: 1 },
 };
 
+function snapPage8ValueUp(value) {
+  return Math.ceil(value / PAGE8_GRID) * PAGE8_GRID;
+}
+
 function clearHomeCoreTransition() {
   if (homeCoreTransitionTimer) {
     window.clearTimeout(homeCoreTransitionTimer);
@@ -1508,10 +1512,81 @@ function addWrappedText(ctx, text, options) {
     maxWidth,
     lineHeight,
     maxLines,
+    align = 'left',
+    exclusions = [],
   } = options;
 
+  const baseLeft = align === 'center' ? x - (maxWidth / 2) : x;
+  const baseRight = baseLeft + maxWidth;
   const lines = [];
   const paragraphs = String(text || '').split('\n');
+
+  function carveSlots(blocked) {
+    let slots = [{ left: baseLeft, right: baseRight }];
+    blocked.forEach((interval) => {
+      const next = [];
+      slots.forEach((slot) => {
+        if (interval.right <= slot.left || interval.left >= slot.right) {
+          next.push(slot);
+          return;
+        }
+        if (interval.left > slot.left) {
+          next.push({ left: slot.left, right: interval.left });
+        }
+        if (interval.right < slot.right) {
+          next.push({ left: interval.right, right: slot.right });
+        }
+      });
+      slots = next;
+    });
+    return slots.filter((slot) => slot.right - slot.left > 8);
+  }
+
+  function lineSlots(lineTop) {
+    const lineBottom = lineTop + lineHeight;
+    const blocked = exclusions
+      .filter((rect) => (rect.y + rect.height) > lineTop && rect.y < lineBottom)
+      .map((rect) => ({
+        left: Math.max(baseLeft, rect.x),
+        right: Math.min(baseRight, rect.x + rect.width),
+      }))
+      .sort((a, b) => a.left - b.left);
+    return carveSlots(blocked);
+  }
+
+  function chooseSlot(slots) {
+    if (!slots.length) return null;
+    if (align === 'right') {
+      return [...slots].sort((a, b) => b.right - a.right)[0];
+    }
+    if (align === 'center') {
+      const center = (baseLeft + baseRight) / 2;
+      return [...slots].sort((a, b) => {
+        const aCenter = (a.left + a.right) / 2;
+        const bCenter = (b.left + b.right) / 2;
+        return Math.abs(aCenter - center) - Math.abs(bCenter - center);
+      })[0];
+    }
+    return [...slots].sort((a, b) => a.left - b.left)[0];
+  }
+
+  function fitUnitsIntoWidth(units, startIndex, separator, width) {
+    let current = '';
+    let index = startIndex;
+    while (index < units.length) {
+      const candidate = current ? `${current}${separator}${units[index]}` : units[index];
+      if (ctx.measureText(candidate).width <= width || !current) {
+        current = candidate;
+        index += 1;
+        continue;
+      }
+      break;
+    }
+    return {
+      text: current,
+      nextIndex: index === startIndex ? Math.min(units.length, startIndex + 1) : index,
+    };
+  }
 
   paragraphs.forEach((paragraph) => {
     const hasSpaces = /\s/.test(paragraph.trim());
@@ -1521,28 +1596,36 @@ function addWrappedText(ctx, text, options) {
     const separator = hasSpaces ? ' ' : '';
 
     if (!units.length) {
-      lines.push('');
+      const lineIndex = lines.length;
+      if (lineIndex < maxLines) {
+        lines.push({ text: '', x: baseLeft });
+      }
       return;
     }
 
-    let current = '';
-    units.forEach((unit) => {
-      const next = current ? `${current}${separator}${unit}` : unit;
-      if (ctx.measureText(next).width <= maxWidth || !current) {
-        current = next;
-        return;
-      }
-      lines.push(current);
-      current = unit;
-    });
-
-    if (current) {
-      lines.push(current);
+    let cursor = 0;
+    while (cursor < units.length) {
+      const lineIndex = lines.length;
+      if (lineIndex >= maxLines) break;
+      const lineTop = y + (lineIndex * lineHeight);
+      const slot = chooseSlot(lineSlots(lineTop)) || { left: baseLeft, right: baseRight };
+      const fitted = fitUnitsIntoWidth(units, cursor, separator, Math.max(8, slot.right - slot.left));
+      const lineWidth = ctx.measureText(fitted.text).width;
+      const lineX = align === 'center'
+        ? slot.left + Math.max(0, ((slot.right - slot.left - lineWidth) / 2))
+        : align === 'right'
+          ? slot.right - lineWidth
+          : slot.left;
+      lines.push({
+        text: fitted.text,
+        x: lineX,
+      });
+      cursor = fitted.nextIndex;
     }
   });
 
   lines.slice(0, maxLines).forEach((line, index) => {
-    ctx.fillText(line, x, y + index * lineHeight);
+    ctx.fillText(line.text, line.x, y + index * lineHeight);
   });
 }
 
@@ -1955,6 +2038,10 @@ function bindComposeEvents() {
       },
     });
     applyComposeTextStyle(activeFixedTextKey);
+    const target = editableKeyMap[activeFixedTextKey];
+    if (target) {
+      clampEditable(target);
+    }
     syncComposeTextTray();
   }
 
@@ -2140,23 +2227,114 @@ function bindComposeEvents() {
       .replace(/&nbsp;/gi, ' ');
   }
 
+  function createEditableMeasureNode(element) {
+    const computed = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const boxWidth = rect.width || element.clientWidth;
+    const boxHeight = rect.height || element.clientHeight;
+    const measure = document.createElement('div');
+    measure.setAttribute('aria-hidden', 'true');
+    measure.className = element.className;
+    if (element.dataset.composeExclusionSide) {
+      measure.dataset.composeExclusionSide = element.dataset.composeExclusionSide;
+      measure.style.setProperty('--compose-exclusion-top', element.style.getPropertyValue('--compose-exclusion-top'));
+      measure.style.setProperty('--compose-exclusion-width', element.style.getPropertyValue('--compose-exclusion-width'));
+      measure.style.setProperty('--compose-exclusion-height', element.style.getPropertyValue('--compose-exclusion-height'));
+      measure.style.setProperty('--compose-exclusion-bottom', element.style.getPropertyValue('--compose-exclusion-bottom'));
+    }
+    measure.style.position = 'absolute';
+    measure.style.left = '-99999px';
+    measure.style.top = '0';
+    measure.style.visibility = 'hidden';
+    measure.style.pointerEvents = 'none';
+    measure.style.boxSizing = 'border-box';
+    measure.style.width = `${boxWidth}px`;
+    measure.style.height = `${boxHeight}px`;
+    measure.style.padding = computed.padding;
+    measure.style.border = '0';
+    measure.style.margin = '0';
+    measure.style.overflow = 'hidden';
+    measure.style.fontFamily = computed.fontFamily;
+    measure.style.fontSize = computed.fontSize;
+    measure.style.fontWeight = computed.fontWeight;
+    measure.style.fontStyle = computed.fontStyle;
+    measure.style.lineHeight = computed.lineHeight;
+    measure.style.letterSpacing = computed.letterSpacing;
+    measure.style.whiteSpace = computed.whiteSpace;
+    measure.style.wordBreak = computed.wordBreak;
+    measure.style.overflowWrap = computed.overflowWrap;
+    measure.style.textAlign = computed.textAlign;
+    measure.style.textTransform = computed.textTransform;
+    measure.style.textIndent = computed.textIndent;
+    return measure;
+  }
+
+  function normalizeEditableValue(element, value) {
+    const text = String(value || '').replace(/\r/g, '');
+    return element.dataset.singleLine === 'true'
+      ? text.replace(/\n+/g, ' ')
+      : text;
+  }
+
+  function editableTextFits(element, value) {
+    const rect = element.getBoundingClientRect();
+    const boxWidth = rect.width || element.clientWidth;
+    const boxHeight = rect.height || element.clientHeight;
+    const measure = createEditableMeasureNode(element);
+    measure.textContent = normalizeEditableValue(element, value);
+    document.body.appendChild(measure);
+    const isSingleLine = element.dataset.singleLine === 'true';
+    const fitsHeight = measure.scrollHeight <= boxHeight + 2;
+    const fitsWidth = measure.scrollWidth <= boxWidth + 2;
+    measure.remove();
+    return isSingleLine ? (fitsHeight && fitsWidth) : fitsHeight;
+  }
+
+  function fitEditableText(element, value) {
+    const normalized = normalizeEditableValue(element, value);
+    if (editableTextFits(element, normalized)) {
+      return normalized;
+    }
+
+    const units = Array.from(normalized);
+    let low = 0;
+    let high = units.length;
+
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      const candidate = units.slice(0, mid).join('');
+      if (editableTextFits(element, candidate)) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    return units.slice(0, low).join('');
+  }
+
+  function setEditablePlainText(element, value) {
+    element.textContent = normalizeEditableValue(element, value);
+  }
+
   function clampEditable(element) {
-    const maxChars = Number(element.dataset.maxChars || 0);
-    const value = element.innerText.replace(/\r/g, '');
+    const value = normalizeEditableValue(element, element.innerText);
     if (!element.dataset.previousValue) {
       element.dataset.previousValue = value;
     }
 
-    if ((maxChars && value.length > maxChars) || element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1) {
-      element.innerText = element.dataset.previousValue;
+    const fittedValue = fitEditableText(element, value);
+    if (fittedValue !== value) {
+      setEditablePlainText(element, fittedValue);
+      element.dataset.previousValue = fittedValue;
       return;
     }
 
-    element.dataset.previousValue = value.trim() ? value : '';
+    element.dataset.previousValue = fittedValue;
   }
 
   function getEditableText(element) {
-    return element.innerText.replace(/\r/g, '');
+    return normalizeEditableValue(element, element.innerText);
   }
 
   function placeCaretAtEnd(element) {
@@ -2555,7 +2733,7 @@ function bindComposeEvents() {
     if (!frameRect.height) return;
     const nextHeight = Math.max(
       PAGE8_MIN_TEXT_SIZE.height,
-      snapPage8Value((liveText.scrollHeight + 8) / frameRect.height),
+      snapPage8ValueUp((liveText.scrollHeight + 8) / frameRect.height),
     );
     if (Math.abs(nextHeight - record.item.height) < (PAGE8_GRID / 2)) return;
     record.item.height = nextHeight;
@@ -3171,6 +3349,8 @@ function bindComposeEvents() {
     Object.values(slotKeyMap).forEach((slot) => {
       if (!slot) return;
       slot.style.display = 'none';
+      slot.style.pointerEvents = 'none';
+      slot.style.zIndex = '';
       slot.style.left = '';
       slot.style.top = '';
       slot.style.right = 'auto';
@@ -3181,13 +3361,20 @@ function bindComposeEvents() {
       const surface = slot.querySelector('.compose-slot__surface');
       if (surface) {
         surface.style.borderRadius = '0';
+        surface.style.pointerEvents = 'auto';
+      }
+      const removeButton = slot.querySelector('.compose-slot__remove');
+      if (removeButton) {
+        removeButton.style.zIndex = '';
       }
     });
 
-    layout.images.forEach((slot) => {
+    layout.images.forEach((slot, index) => {
       const element = slotKeyMap[slot.key];
       if (!element) return;
       element.style.display = 'block';
+      element.style.pointerEvents = 'auto';
+      element.style.zIndex = String(20 + index);
       element.style.left = `${slot.x * 100}%`;
       element.style.top = `${slot.y * 100}%`;
       element.style.width = `${slot.width * 100}%`;
@@ -3199,12 +3386,19 @@ function bindComposeEvents() {
         surface.style.borderRadius = slot.shape === 'arch-right'
           ? '0 999px 999px 0 / 0 50% 50% 0'
           : '0';
+        surface.style.pointerEvents = 'auto';
+      }
+      const removeButton = element.querySelector('.compose-slot__remove');
+      if (removeButton) {
+        removeButton.style.zIndex = String(40 + index);
       }
     });
 
     Object.entries(editableKeyMap).forEach(([fieldKey, element]) => {
       if (!element) return;
       element.style.display = 'none';
+      element.style.pointerEvents = 'none';
+      element.style.zIndex = '';
       element.style.left = '';
       element.style.top = '';
       element.style.right = 'auto';
@@ -3218,6 +3412,11 @@ function bindComposeEvents() {
       element.style.lineHeight = '';
       element.style.textAlign = '';
       element.style.whiteSpace = '';
+      element.removeAttribute('data-compose-exclusion-side');
+      element.style.removeProperty('--compose-exclusion-top');
+      element.style.removeProperty('--compose-exclusion-width');
+      element.style.removeProperty('--compose-exclusion-height');
+      element.dataset.singleLine = element.dataset.defaultSingleLine || 'false';
       delete element.dataset.composeBaseFontSize;
       delete element.dataset.composeBaseLineHeight;
       if (!visibleFields.has(fieldKey) && activeFixedTextKey === fieldKey) {
@@ -3225,11 +3424,13 @@ function bindComposeEvents() {
       }
     });
 
-    layout.texts.forEach((block) => {
+    layout.texts.forEach((block, index) => {
       const element = editableKeyMap[block.fieldKey];
       if (!element) return;
       const metrics = getFixedTemplateTextMetrics(block.fieldKey, block);
       element.style.display = 'block';
+      element.style.pointerEvents = 'auto';
+      element.style.zIndex = String(60 + index);
       element.style.left = `${block.x * 100}%`;
       element.style.top = `${block.y * 100}%`;
       element.style.width = `${block.width * 100}%`;
@@ -3243,6 +3444,21 @@ function bindComposeEvents() {
       element.style.lineHeight = `${Math.round(metrics.lineHeight)}px`;
       element.style.textAlign = block.align || 'left';
       element.style.whiteSpace = metrics.maxLines > 1 ? 'pre-wrap' : 'nowrap';
+      element.dataset.singleLine = block.singleLine === true
+        ? 'true'
+        : block.singleLine === false
+          ? 'false'
+          : metrics.maxLines <= 1
+            ? 'true'
+            : 'false';
+      const exclusion = block.exclusions?.[0];
+      if (exclusion) {
+        element.dataset.composeExclusionSide = exclusion.side;
+        element.style.setProperty('--compose-exclusion-top', `${(exclusion.offsetTop / block.height) * 100}%`);
+        element.style.setProperty('--compose-exclusion-width', `${(exclusion.width / block.width) * 100}%`);
+        element.style.setProperty('--compose-exclusion-height', `${(exclusion.height / block.height) * 100}%`);
+        element.style.setProperty('--compose-exclusion-bottom', `${((exclusion.offsetTop + exclusion.height) / block.height) * 100}%`);
+      }
     });
 
     if (roughOverlay) {
@@ -3276,6 +3492,10 @@ function bindComposeEvents() {
     }
 
     applyComposeTextStyles();
+    Object.values(editableKeyMap).forEach((element) => {
+      if (!element || element.style.display === 'none') return;
+      clampEditable(element);
+    });
   }
 
   function applyCustomLayout() {
@@ -3832,17 +4052,6 @@ function bindComposeEvents() {
     element.addEventListener('beforeinput', (event) => {
       if (element.dataset.singleLine === 'true' && (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak')) {
         event.preventDefault();
-        return;
-      }
-
-      const maxChars = Number(element.dataset.maxChars || 0);
-      if (!maxChars || !event.inputType.startsWith('insert')) return;
-
-      const currentLength = getEditableText(element).length;
-      const selectedLength = getSelectionLengthWithin(element);
-      const incomingLength = event.data?.length ?? 1;
-      if ((currentLength - selectedLength + incomingLength) > maxChars) {
-        event.preventDefault();
       }
     });
 
@@ -3852,28 +4061,18 @@ function bindComposeEvents() {
       const normalizedText = element.dataset.singleLine === 'true'
         ? pastedText.replace(/\n+/g, ' ')
         : pastedText;
-
-      const maxChars = Number(element.dataset.maxChars || 0);
-      const currentLength = getEditableText(element).length;
-      const selectedLength = getSelectionLengthWithin(element);
-      const availableLength = maxChars
-        ? Math.max(0, maxChars - (currentLength - selectedLength))
-        : normalizedText.length;
-      const nextText = normalizedText.slice(0, availableLength);
-      if (!nextText) return;
-      insertPlainText(element, nextText);
-      element.dataset.previousValue = getEditableText(element);
+      if (!normalizedText) return;
+      insertPlainText(element, normalizedText);
+      clampEditable(element);
+      placeCaretAtEnd(element);
     });
 
     element.addEventListener('input', () => {
-      const maxChars = Number(element.dataset.maxChars || 0);
-      const value = getEditableText(element);
-      if (maxChars && value.length > maxChars) {
-        element.innerText = element.dataset.previousValue || '';
+      const rawValue = getEditableText(element);
+      clampEditable(element);
+      if (getEditableText(element) !== rawValue) {
         placeCaretAtEnd(element);
-        return;
       }
-      element.dataset.previousValue = value;
     });
 
     element.addEventListener('blur', () => {
