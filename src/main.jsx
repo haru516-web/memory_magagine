@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import './local-fonts.css';
 import './vite-shell.css';
 import '../docs/css/reset.css';
 import '../docs/css/tokens.css';

@@ -50,7 +50,7 @@
 }
 
 .app-shell--compose {
-  background: linear-gradient(180deg, #f8f3ed 0%, #f4ede6 100%);
+  background: #ffffff;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;

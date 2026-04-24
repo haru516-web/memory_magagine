@@ -4,6 +4,7 @@ export const PRETEXT_PAGE_WIDTH = 794;
 export const PRETEXT_PAGE_HEIGHT = 1123;
 const PRETEXT_CONTENT_WIDTH = PRETEXT_PAGE_WIDTH * PAGE8_BOUNDS.width;
 const PRETEXT_CONTENT_HEIGHT = PRETEXT_PAGE_HEIGHT * PAGE8_BOUNDS.height;
+const DEFAULT_SERIF_FONT_FAMILY = '"Shippori Mincho", serif';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -53,7 +54,7 @@ function normalizeAlign(value) {
 
 function textFamilyToReference(value) {
   return value === 'serif'
-    ? '"Iowan Old Style", "Palatino Linotype", Palatino, serif'
+    ? DEFAULT_SERIF_FONT_FAMILY
     : '"Noto Sans JP", sans-serif';
 }
 

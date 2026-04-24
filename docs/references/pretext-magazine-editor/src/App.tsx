@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { DEFAULT_BODY_TEXT, DEFAULT_TITLE_TEXT, PAGE_HEIGHT, PAGE_WIDTH } from './constants'
+import { EmbeddedTextTray } from './components/EmbeddedTextTray'
 import { Inspector } from './components/Inspector'
 import { Toolbar } from './components/Toolbar'
 import type { DragMode, EditorBox, ImageBox, ResizeHandle, TextBox } from './types'
@@ -9,6 +10,7 @@ import { flowTextLines } from './utils/textFlow'
 
 const CENTER_SNAP_THRESHOLD = 18
 const EMPTY_SNAP_GUIDES = { horizontal: false, vertical: false }
+const DEFAULT_TEXT_FONT_FAMILY = '"Shippori Mincho", serif'
 
 function uid() {
   return globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
@@ -31,7 +33,7 @@ function createTitleBox(zIndex: number, align: TextBox['data']['align'] = 'left'
     zIndex,
     data: {
       text: DEFAULT_TITLE_TEXT,
-      fontFamily: '"Iowan Old Style", "Palatino Linotype", Palatino, serif',
+      fontFamily: DEFAULT_TEXT_FONT_FAMILY,
       fontSize: 48,
       fontWeight: 700,
       lineHeight: 54,
@@ -56,7 +58,7 @@ function createBodyBox(zIndex: number, align: TextBox['data']['align'] = 'left')
     zIndex,
     data: {
       text: DEFAULT_BODY_TEXT,
-      fontFamily: '"Iowan Old Style", "Palatino Linotype", Palatino, serif',
+      fontFamily: DEFAULT_TEXT_FONT_FAMILY,
       fontSize: 22,
       fontWeight: 400,
       lineHeight: 34,
@@ -153,6 +155,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
   const [dragMode, setDragMode] = useState<DragMode>({ type: 'idle' })
   const [cropMode, setCropMode] = useState(false)
   const [embeddedScale, setEmbeddedScale] = useState(1)
+  const [embeddedTrayInset, setEmbeddedTrayInset] = useState(0)
   const [snapGuides, setSnapGuides] = useState(EMPTY_SNAP_GUIDES)
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null)
@@ -351,7 +354,14 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
     activePointerIdRef.current = event.pointerId
     selectBox(box.id)
     const point = toPagePoint(event.clientX, event.clientY)
-    if (cropMode && box.kind === 'image') {
+    const target = event.target as HTMLElement | null
+    const shouldCropImage = box.kind === 'image'
+      && (
+        embedded
+          ? Boolean(box.data.src) && !target?.closest('.editor-box__label')
+          : cropMode
+      )
+    if (shouldCropImage && box.kind === 'image') {
       setDragMode({
         type: 'crop',
         startX: point.x,
@@ -540,7 +550,13 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
       observer.disconnect()
       window.removeEventListener('resize', updateScale)
     }
-  }, [embedded])
+  }, [embedded, embeddedTrayInset])
+
+  useEffect(() => {
+    if (!embedded || !selected || selected.kind === 'image') {
+      setEmbeddedTrayInset(0)
+    }
+  }, [embedded, selected])
 
   const renderedBoxes = useMemo(() => sortByZ(boxes), [boxes])
 
@@ -579,6 +595,7 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
               onUpdateText={updateSelectedText}
               onUpdateImage={updateSelectedImage}
               onConvertKind={convertSelectedKind}
+              onSetCropMode={setCropMode}
               onUpload={handleUpload}
             />
           )}
@@ -586,6 +603,12 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
         <div
           ref={canvasAreaRef}
           className={`canvas-area ${embedded ? 'canvas-area--embedded' : ''}`}
+          style={embedded
+            ? {
+                paddingBottom: `${Math.round(embeddedTrayInset)}px`,
+                scrollPaddingBottom: `${Math.round(embeddedTrayInset)}px`,
+              }
+            : undefined}
           onPointerDown={(event) => {
             const target = event.target as HTMLElement | null
             if (target?.closest('[data-editor-box-id]')) return
@@ -756,6 +779,14 @@ export default function App({ embedded = false, initialBoxes, onBoxesChange, onI
           </div>
         </div>
       </div>
+      {embedded && selected && selected.kind !== 'image' ? (
+        <EmbeddedTextTray
+          selected={selected}
+          onUpdateText={updateSelectedText}
+          onConvertKind={convertSelectedKind}
+          onVisibleInsetChange={setEmbeddedTrayInset}
+        />
+      ) : null}
     </div>
   )
 }

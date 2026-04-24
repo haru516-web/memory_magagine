@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import './local-fonts.css';
 import ReferenceEditor from '../docs/references/pretext-magazine-editor/src/App.tsx';
 import '../docs/references/pretext-magazine-editor/src/styles.css';
 import './pretext-shell.css';

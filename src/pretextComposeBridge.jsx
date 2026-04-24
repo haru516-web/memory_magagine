@@ -2,12 +2,14 @@ import './pretextComposeBridge.css';
 import { getDefaultPretextBoxes, serializePretextBoxes } from './pretextLayoutAdapter.js';
 
 const EMBEDDED_PRETEXT_STYLE_ID = 'memories-pretext-embedded-overrides';
-const EMBEDDED_PRETEXT_BACKGROUND = '#f8f3ed';
-const EMBEDDED_PRETEXT_STYLE = `
+const DEFAULT_EMBEDDED_PRETEXT_BACKGROUND = '#f8f4ee';
+
+function getEmbeddedPretextStyle(backgroundColor) {
+  return `
 html,
 body,
 #root {
-  background: ${EMBEDDED_PRETEXT_BACKGROUND} !important;
+  background: ${backgroundColor} !important;
 }
 
 html,
@@ -28,8 +30,9 @@ body::after {
 .canvas-area--embedded,
 .page-stage-shell,
 .page-stage,
-.page-shadow {
-  background: ${EMBEDDED_PRETEXT_BACKGROUND} !important;
+.page-shadow,
+.page {
+  background: ${backgroundColor} !important;
   border: 0 !important;
   box-shadow: none !important;
 }
@@ -50,6 +53,7 @@ body::after {
   box-shadow: none !important;
 }
 `;
+}
 
 function getTargetOrigin() {
   return window.location.origin === 'null' ? '*' : window.location.origin;
@@ -64,6 +68,7 @@ function isAcceptedMessageOrigin(origin) {
 
 export function mountComposePretextEditor(container, options = {}) {
   let latestBoxes = getDefaultPretextBoxes(options.customLayout, options.textValues);
+  let currentBackgroundColor = options.backgroundColor || DEFAULT_EMBEDDED_PRETEXT_BACKGROUND;
   const frame = document.createElement('iframe');
   frame.className = 'compose-pretext-iframe';
   frame.src = './pretext-editor.html?embedded=1';
@@ -80,8 +85,10 @@ export function mountComposePretextEditor(container, options = {}) {
     const body = doc.body;
     if (!root || !body) return;
 
-    root.style.setProperty('background', EMBEDDED_PRETEXT_BACKGROUND, 'important');
-    body.style.setProperty('background', EMBEDDED_PRETEXT_BACKGROUND, 'important');
+    frame.style.setProperty('background', currentBackgroundColor, 'important');
+    container.style.setProperty('background', currentBackgroundColor, 'important');
+    root.style.setProperty('background', currentBackgroundColor, 'important');
+    body.style.setProperty('background', currentBackgroundColor, 'important');
     root.style.setProperty('color-scheme', 'light', 'important');
     body.style.setProperty('color-scheme', 'light', 'important');
 
@@ -89,9 +96,9 @@ export function mountComposePretextEditor(container, options = {}) {
     if (!styleTag) {
       styleTag = doc.createElement('style');
       styleTag.id = EMBEDDED_PRETEXT_STYLE_ID;
-      styleTag.textContent = EMBEDDED_PRETEXT_STYLE;
       doc.head.appendChild(styleTag);
     }
+    styleTag.textContent = getEmbeddedPretextStyle(currentBackgroundColor);
   };
 
   const sendInit = () => {
@@ -145,6 +152,10 @@ export function mountComposePretextEditor(container, options = {}) {
     },
     getSerializedLayout() {
       return serializePretextBoxes(latestBoxes);
+    },
+    setBackgroundColor(backgroundColor) {
+      currentBackgroundColor = backgroundColor || DEFAULT_EMBEDDED_PRETEXT_BACKGROUND;
+      applyEmbeddedOverrides();
     },
   };
 }

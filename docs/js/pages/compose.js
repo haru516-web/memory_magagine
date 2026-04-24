@@ -1,4 +1,5 @@
 import { TAG_GROUPS, TAG_GROUP_LABELS } from '../data/tags.js';
+import { getFixedTemplateLayout } from '../templates/fixedTemplateLayouts.js';
 import { COMPOSE_TEMPLATES, DEFAULT_COMPOSE_TEMPLATE } from '../templates/index.js';
 import { getIcon } from '../components/icons.js';
 
@@ -45,6 +46,9 @@ const COMPOSE_TEXT_FONT_STACKS = {
   'source-han-serif': `'Source Han Serif', 'Source Han Serif JP', 'Noto Serif JP', serif`,
   'shippori-mincho': `'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
   'zen-old-mincho': `'Zen Old Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+  'editorial-serif': `'Zen Old Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+  'modern-sans': `'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif`,
+  'soft-serif': `'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
 };
 
 function getComposeMode(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
@@ -54,7 +58,7 @@ function getComposeMode(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
 function buildComposeTextStyleAttr(textStyles = {}, fieldKey) {
   const source = textStyles?.[fieldKey] || {};
   const scale = Number.isFinite(Number(source.scale))
-    ? Math.min(1.4, Math.max(0.8, Number(source.scale)))
+    ? Math.min(4, Math.max(1, Number(source.scale)))
     : 1;
   const fontStack = source.family && COMPOSE_TEXT_FONT_STACKS[source.family]
     ? `--compose-font-stack:${COMPOSE_TEXT_FONT_STACKS[source.family]};`
@@ -141,6 +145,15 @@ function renderComposeTagsButton(isEditing) {
   `;
 }
 
+function renderComposeEditHeaderActions(isEditing) {
+  return `
+    <div class="compose-stage-header__inline-actions">
+      <button class="button button--ghost compose-draft-button compose-draft-button--header" type="button" data-save-compose-draft>Save Draft</button>
+      <button class="button button--primary compose-submit-button compose-submit-button--header" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'Tags'}</button>
+    </div>
+  `;
+}
+
 function renderGroup(groupKey, options, selectedTags = []) {
   return `
     <section class="compose-group compose-group--tags">
@@ -167,7 +180,7 @@ function renderTemplatePicker(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
           ${FIXED_COMPOSE_TEMPLATES.map((template) => `
             <label class="template-thumb ${selectedTemplateId === template.id ? 'is-active' : ''}">
               <input type="radio" name="templateId" value="${template.id}" ${selectedTemplateId === template.id ? 'checked' : ''} />
-              <span class="template-thumb__preview template-option__preview template-option__preview--${template.id}" aria-hidden="true"></span>
+              <span class="template-thumb__preview template-option__preview template-option__preview--${template.id} ${template.roughUrl ? 'template-thumb__preview--rough' : ''}" aria-hidden="true" ${template.roughUrl ? `style="background-image:url('${template.roughUrl}');background-size:cover;background-position:center;"` : ''}></span>
             </label>
           `).join('')}
         </div>
@@ -207,11 +220,12 @@ function renderUploadSlot({ id, slotClass }) {
   `;
 }
 
-function renderStaticSlot(slotClass) {
+function renderStaticSlot({ id, slotClass }) {
   return `
-    <div class="compose-slot ${slotClass}">
+    <div class="compose-slot ${slotClass}" data-slot="${id}">
       <div class="compose-slot__surface">
-        <div class="compose-slot__placeholder">
+        <div class="compose-slot__image" data-slot-image="${id}" hidden></div>
+        <div class="compose-slot__placeholder" data-slot-placeholder="${id}">
           <span class="compose-slot__plus">${getIcon('compose')}</span>
         </div>
       </div>
@@ -226,6 +240,10 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
   const sheetClass = isCustomTemplate ? `${baseClass} compose-sheet--custom` : baseClass;
   const editableAttr = editable ? 'true' : 'false';
   const textStyles = values.textStyles || {};
+  const fixedLayout = isCustomTemplate ? null : getFixedTemplateLayout(selectedId);
+  const roughOverlayStyle = fixedLayout?.roughUrl
+    ? `style="background-image:url('${fixedLayout.roughUrl}');"`
+    : '';
 
   if (isCustomTemplate) {
     return `
@@ -247,6 +265,9 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
       <div class="compose-sheet__frame">
         <div class="compose-sheet__outline" aria-hidden="true"></div>
         <div class="compose-sheet__footer-bar" aria-hidden="true"></div>
+        <div class="compose-sheet__rough-overlay" data-compose-rough-overlay hidden ${roughOverlayStyle}></div>
+        <div class="compose-sheet__shape-mask" data-compose-shape-mask="0" hidden></div>
+        <div class="compose-sheet__shape-mask" data-compose-shape-mask="1" hidden></div>
         <div class="compose-custom-canvas" data-custom-canvas hidden></div>
         <div
           class="compose-sheet__headline compose-editable"
@@ -279,13 +300,16 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
         >${values.intro}</div>
         ${interactiveSlots
           ? renderUploadSlot({ id: 'imageInputSecondary', slotClass: 'compose-slot--secondary' })
-          : renderStaticSlot('compose-slot--secondary')}
+          : renderStaticSlot({ id: 'imageInputSecondary', slotClass: 'compose-slot--secondary' })}
         ${interactiveSlots
           ? renderUploadSlot({ id: 'imageInputAccent', slotClass: 'compose-slot--accent' })
-          : renderStaticSlot('compose-slot--accent')}
+          : renderStaticSlot({ id: 'imageInputAccent', slotClass: 'compose-slot--accent' })}
+        ${interactiveSlots
+          ? renderUploadSlot({ id: 'imageInputDetail', slotClass: 'compose-slot--detail' })
+          : renderStaticSlot({ id: 'imageInputDetail', slotClass: 'compose-slot--detail' })}
         ${interactiveSlots
           ? renderUploadSlot({ id: 'imageInputPrimary', slotClass: 'compose-slot--primary' })
-          : renderStaticSlot('compose-slot--primary')}
+          : renderStaticSlot({ id: 'imageInputPrimary', slotClass: 'compose-slot--primary' })}
         <div
           class="compose-sheet__body compose-editable"
           data-editable="body"
@@ -365,34 +389,45 @@ function renderComposeModeSwitch(activeMode) {
 function renderFixedTextTray() {
   return `
     <section class="compose-text-tray" data-compose-text-tray hidden>
-      <button class="compose-text-tray__handle" type="button" data-compose-text-tray-close aria-label="Hide text settings"></button>
-      <div class="compose-text-tray__section">
-        <div class="compose-text-tray__heading">
-          <span>Font</span>
-          <strong data-compose-text-target>Text</strong>
+      <div class="compose-text-tray__chrome" data-compose-text-tray-chrome>
+        <button class="compose-text-tray__handle" type="button" data-compose-text-tray-close aria-label="Toggle text settings height"></button>
+        <div class="compose-text-tray__levels" role="group" aria-label="Text settings height">
+          <button class="compose-text-tray__level" type="button" data-compose-text-tray-level="0">0%</button>
+          <button class="compose-text-tray__level" type="button" data-compose-text-tray-level="50">50%</button>
+          <button class="compose-text-tray__level" type="button" data-compose-text-tray-level="100">100%</button>
         </div>
-        ${COMPOSE_TEXT_FONT_GROUPS.map((group) => `
-          <div class="compose-text-tray__font-group">
-            <span class="compose-text-tray__group-label">${group.label}</span>
-            <div class="compose-text-tray__options">
-              ${group.options.map((option) => `
-                <button class="compose-text-tray__option" type="button" data-compose-text-font="${option.id}">
-                  ${option.label}
-                </button>
-              `).join('')}
-            </div>
-          </div>
-        `).join('')}
       </div>
-      <div class="compose-text-tray__section">
-        <div class="compose-text-tray__heading">
-          <span>Size</span>
-          <strong data-compose-text-size-value>100%</strong>
+      <div class="compose-text-tray__body" data-compose-text-tray-body>
+        <div class="compose-text-tray__section">
+          <div class="compose-text-tray__heading">
+            <span>Font</span>
+            <strong data-compose-text-target>Text</strong>
+          </div>
+          ${COMPOSE_TEXT_FONT_GROUPS.map((group) => `
+            <div class="compose-text-tray__font-group">
+              <span class="compose-text-tray__group-label">${group.label}</span>
+              <div class="compose-text-tray__options">
+                ${group.options.map((option) => `
+                  <button class="compose-text-tray__option" type="button" data-compose-text-font="${option.id}">
+                    ${option.label}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
         </div>
-        <div class="compose-text-tray__slider">
-          <span>A</span>
-          <input type="range" min="80" max="140" step="1" value="100" data-compose-text-size />
-          <span class="compose-text-tray__slider-large">A</span>
+        <div class="compose-text-tray__section">
+          <div class="compose-text-tray__heading">
+            <span>Size</span>
+            <strong data-compose-text-size-value>50%</strong>
+          </div>
+          <div class="compose-text-tray__slider">
+            <div class="compose-text-tray__stepper" aria-label="Adjust text size">
+              <button class="compose-text-tray__step-button" type="button" data-compose-text-size-step="up" aria-label="Increase text size">▲</button>
+              <button class="compose-text-tray__step-button" type="button" data-compose-text-size-step="down" aria-label="Decrease text size">▼</button>
+            </div>
+            <input type="range" min="50" max="200" step="1" value="50" data-compose-text-size />
+          </div>
         </div>
       </div>
     </section>
@@ -440,8 +475,9 @@ function renderEditorScreen({ values, selectedId, selectedBackground, isEditing 
           ${isCustomTemplate ? renderComposeDeleteButton() : ''}
           ${isCustomTemplate ? renderComposeTagsButton(isEditing) : ''}
         </div>
-        <div class="compose-stage-header__title-wrap">
+        <div class="compose-stage-header__title-wrap ${isCustomTemplate ? '' : 'compose-stage-header__title-wrap--with-actions'}">
           ${isCustomTemplate ? '' : '<h2 class="page-header__title compose-stage-header__title">Edit Page</h2>'}
+          ${isCustomTemplate ? '' : renderComposeEditHeaderActions(isEditing)}
         </div>
       </header>
 
@@ -452,12 +488,6 @@ function renderEditorScreen({ values, selectedId, selectedBackground, isEditing 
               ? '<div class="compose-pretext-host compose-pretext-host--page8" data-compose-pretext-host></div>'
               : renderComposeSheet(values, selectedId, selectedBackground, { editable: true, interactiveSlots: true })}
           </section>
-          ${isCustomTemplate ? '' : `
-            <div class="compose-flow-actions compose-flow-actions--editor">
-              <button class="button button--ghost compose-draft-button" type="button" data-save-compose-draft>Save Draft</button>
-              <button class="button button--primary compose-submit-button" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'Tags'}</button>
-            </div>
-          `}
           ${isCustomTemplate ? '' : renderFixedTextTray()}
         </section>
         <section class="compose-custom-tools" data-custom-template-controls hidden ${isCustomTemplate ? 'style="display:none"' : ''}>

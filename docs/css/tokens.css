@@ -1,6 +1,6 @@
 :root {
-  --bg: #fff9f4;
-  --bg-soft: #fff3ea;
+  --bg: #ffffff;
+  --bg-soft: #ffffff;
   --paper: rgba(255, 253, 251, 0.92);
   --line: rgba(234, 216, 207, 0.92);
   --line-strong: rgba(214, 140, 147, 0.34);
@@ -27,9 +27,7 @@
   --surface-soft: rgba(255, 253, 249, 0.86);
   --surface-soft-border: rgba(233, 217, 207, 0.9);
   --shell-bg:
-    radial-gradient(circle at top left, rgba(255,255,255,0.88), transparent 35%),
-    radial-gradient(circle at 78% 16%, rgba(244, 213, 217, 0.44), transparent 22%),
-    linear-gradient(180deg, #fffaf6 0%, #fff4ec 100%);
+    linear-gradient(180deg, #ffffff 0%, #ffffff 100%);
   --radius-lg: 24px;
   --radius-md: 18px;
   --radius-sm: 14px;

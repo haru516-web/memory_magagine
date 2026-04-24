@@ -61,3 +61,73 @@ Open Questions
   - Refine the edit stage to keep the page dominant and controls secondary.
   - Simplify the tags stage into a cleaner scrollable list with fixed submit action.
   - Build and verify on mobile-sized layout.
+
+## Compose Template / Custom Selector
+
+- Goal: Bring the `Post` flow closer to the newly attached mobile reference with a segmented `Template / Custom` selector on the selection screen and a hidden text-style tray on the edit screen.
+- Constraints:
+  - Keep existing `select -> edit -> tags` stage flow and persistence mapping intact.
+  - Reuse current fixed-template renderer and page8 custom editor instead of replacing them.
+  - Hide the segmented selector on the edit screen.
+- Target files:
+  - `docs/js/pages/compose.js`
+  - `docs/js/app.js`
+  - `docs/css/compose.css`
+- Steps:
+  - Add a segmented selector to the selection screen and map `Custom` to the existing `page8` template.
+  - Change the selection CTA to `Edit`.
+  - Fix the edit-stage layout so the page fits within the available viewport.
+  - Add a bottom text-style tray for fixed templates that appears when a text box is focused.
+  - Keep the existing page8 controls available only for the custom template path.
+  - Build and verify on a mobile-sized viewport.
+
+## Local Font Hosting
+
+- Goal: Remove runtime dependence on Google Fonts so all editor fonts work on restricted or unstable networks.
+- Constraints:
+  - Keep the existing font family choices and current CSS stack names where possible.
+  - Avoid adding a font-loading dependency.
+  - Preserve existing routing and editor behavior.
+- Target files:
+  - `public/fonts/*`
+  - `src/local-fonts.css`
+  - `src/main.jsx`
+  - `src/pretext-main.jsx`
+  - `index.html`
+  - `pretext-editor.html`
+  - `src/pretextLayoutAdapter.js`
+  - `docs/references/pretext-magazine-editor/src/App.tsx`
+  - `docs/references/pretext-magazine-editor/src/components/Inspector.tsx`
+- Steps:
+  - Download local copies of the currently offered fonts from their official repositories.
+  - Add `@font-face` declarations and remove the external Google Fonts links.
+  - Replace remaining OS-dependent serif defaults in the embedded editor with bundled Japanese-safe fonts.
+  - Build and verify that the app no longer depends on remote font CDNs.
+
+## Template Rough Recreation
+
+- Goal: Rebuild the fixed template set from the provided A4 rough images while applying a shared outer 6% safety area.
+- Constraints:
+  - Keep the existing fixed-template architecture, compose flow, routing, and persistence format.
+  - Treat the supplied roughs as layout geometry references for image boxes and text boxes.
+  - Use the roughs as an edit-only background overlay for placement verification; final output stays plain unless explicitly changed.
+- Target files:
+  - `docs/references/template_roughs/*.png`
+  - `docs/js/templates/page1.js`
+  - `docs/js/templates/page2.js`
+  - `docs/js/templates/page3.js`
+  - `docs/js/templates/page4.js`
+  - `docs/js/templates/page5.js`
+  - `docs/js/templates/page6.js`
+  - `docs/js/templates/page7.js`
+  - `docs/js/templates/page9.js`
+  - `docs/js/templates/page10.js`
+  - `docs/js/pages/compose.js`
+  - `docs/js/app.js`
+  - `docs/css/compose.css`
+- Steps:
+  - Inspect the 9 rough images and map each to an existing fixed template id.
+  - Add a shared 6% safe-area rule for fixed templates and verify all editable slots stay within it.
+  - Rebuild each fixed template's preview/export geometry to match the rough image box and text box positions as closely as possible.
+  - Add an edit-only rough-background overlay so placement can be checked directly against the provided A4 reference.
+  - Build and validate that the template picker, editor preview, and rendered export remain aligned.
