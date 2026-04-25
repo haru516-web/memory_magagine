@@ -25,25 +25,9 @@ function getPostTitle(post) {
   return caption || 'Untitled';
 }
 
-function getPostExcerpt(post) {
-  const caption = String(post.caption || '').trim();
-  if (!caption) return '静かな記録をそっと残した一頁です。';
-  return caption.length > 84 ? `${caption.slice(0, 84)}...` : caption;
-}
-
 function getPostLocation(post) {
   const tags = [...(post.fixedTags || []), ...(post.freeTags || [])].filter(Boolean);
   return tags[0] || '場所未設定';
-}
-
-function formatCardDateParts(isoDate) {
-  const date = new Date(isoDate);
-  const weekday = date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-  return {
-    year: String(date.getFullYear()),
-    monthDay: `${String(date.getMonth() + 1).padStart(2, '0')} / ${String(date.getDate()).padStart(2, '0')}`,
-    weekday,
-  };
 }
 
 function sortSearchPosts(posts, sortMode) {
@@ -102,39 +86,14 @@ function renderSortButton(value, label, activeSort, icon = '') {
 
 function renderSearchResultCard(post) {
   const title = getPostTitle(post);
-  const excerpt = getPostExcerpt(post);
-  const location = getPostLocation(post);
-  const date = formatCardDateParts(post.createdAt);
 
   return `
     <article class="search-result-card" data-post-id="${post.id}">
       <button class="search-result-card__body" type="button" data-open-preview="${post.id}" aria-label="Open ${title}">
-        <div class="search-result-card__head">
-          <h3 class="search-result-card__title">${title}</h3>
-          <p class="search-result-card__lede">${excerpt}</p>
-        </div>
-        <div class="search-result-card__layout">
-          <div class="search-result-card__media-wrap">
-            <img class="search-result-card__media" src="${post.imageData}" alt="${title}" />
-          </div>
-          <div class="search-result-card__aside">
-            <div class="search-result-card__note-block"></div>
-            <p class="search-result-card__note">${excerpt}</p>
-            <div class="search-result-card__date">
-              <span>${date.year}</span>
-              <strong>${date.monthDay}</strong>
-              <small>${date.weekday}</small>
-            </div>
-          </div>
+        <div class="search-result-card__media-wrap">
+          <img class="search-result-card__media" src="${post.imageData}" alt="${title}" />
         </div>
       </button>
-      <div class="search-result-card__meta">
-        <p class="search-result-card__location">
-          <span class="search-result-card__location-icon">${getIcon('pin')}</span>
-          <span>${location}</span>
-        </p>
-        <p class="search-result-card__caption">${excerpt}</p>
-      </div>
     </article>
   `;
 }

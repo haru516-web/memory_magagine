@@ -123,8 +123,15 @@ const RAW_FIXED_TEMPLATE_LAYOUTS = {
       rawRect(0.0877, 0.4420, 0.9123, 0.9365),
     ],
     texts: [
-      rawRect(0.0877, 0.0635, 0.4569, 0.1310),
-      rawRect(0.5431, 0.2410, 0.9123, 0.4120),
+      {
+        ...rawRect(0.0877, 0.0635, 0.4569, 0.1310),
+        fieldKey: 'text',
+        singleLine: false,
+      },
+      {
+        ...rawRect(0.5431, 0.2410, 0.9123, 0.4120),
+        fieldKey: 'body',
+      },
     ],
   },
   page5: {
@@ -133,8 +140,15 @@ const RAW_FIXED_TEMPLATE_LAYOUTS = {
       rawRect(0.0792, 0.1745, 0.4823, 0.9290),
     ],
     texts: [
-      rawRect(0.0785, 0.0710, 0.4823, 0.1385),
-      rawRect(0.5184, 0.0710, 0.9215, 0.9290),
+      {
+        ...rawRect(0.0785, 0.0710, 0.4823, 0.1385),
+        fieldKey: 'text',
+        singleLine: false,
+      },
+      {
+        ...rawRect(0.5184, 0.0710, 0.9215, 0.9290),
+        fieldKey: 'body',
+      },
     ],
   },
   page6: {
@@ -154,14 +168,14 @@ const RAW_FIXED_TEMPLATE_LAYOUTS = {
     roughUrl: roughAsset('9.png'),
     images: [
       rawRect(0.5354, 0.1065, 0.8777, 0.4700),
-      rawRect(0.1004, 0.5300, 0.4427, 0.9520),
+      rawRect(0.1004, 0.5295, 0.4427, 0.8930),
     ],
     texts: [
       {
         ...rawRect(0.1011, 0.1065, 0.4427, 0.4700),
         singleLine: false,
       },
-      rawRect(0.5347, 0.5300, 0.8777, 0.9520),
+      rawRect(0.5347, 0.5295, 0.8777, 0.8930),
     ],
     masks: [
       {
@@ -218,11 +232,11 @@ function normalizeLayoutSource(templateId) {
       ...rect,
     })),
     texts: source.texts.map((rect, index) => ({
-      fieldKey: textKeys[index],
+      fieldKey: rect.fieldKey || textKeys[index],
       ...rect,
       align: rect.align || 'left',
       singleLine: rect.singleLine,
-      exclusions: blockExclusions(rect, source.masks || []),
+      exclusions: blockExclusions(rect, source.textExclusionMasks || source.masks || []),
     })),
   };
   return layout;
@@ -240,6 +254,12 @@ export function getFixedTemplateTextMetrics(fieldKey, rect) {
   const sharedFontSize = (28 / 1.5) * 0.5;
   const sharedLineRatio = 1.35;
   const presets = {
+    text: {
+      weight: 600,
+      fallbackStack: '"Cormorant Garamond", "Times New Roman", serif',
+      size: sharedFontSize,
+      lineRatio: sharedLineRatio,
+    },
     headline: {
       weight: 600,
       fallbackStack: '"Cormorant Garamond", "Times New Roman", serif',
@@ -290,6 +310,47 @@ export function getFixedTemplateTextMetrics(fieldKey, rect) {
   };
 }
 
+function fitTextLine(ctx, units, startIndex, maxWidth) {
+  let line = '';
+  let index = startIndex;
+  while (index < units.length) {
+    const candidate = `${line}${units[index]}`;
+    if (line && ctx.measureText(candidate).width > maxWidth) {
+      break;
+    }
+    line = candidate;
+    index += 1;
+    if (ctx.measureText(line).width > maxWidth) {
+      break;
+    }
+  }
+  return {
+    line,
+    nextIndex: Math.max(index, startIndex + (line ? 0 : 1)),
+  };
+}
+
+function drawPage7ConstrainedText(ctx, text, block, metrics) {
+  const rawText = String(text || '').replace(/\r/g, '').replace(/\n+/g, '');
+  const units = Array.from(rawText);
+  const maxLines = metrics.maxLines;
+  const x = block.x * DESIGN_WIDTH;
+  const y = block.y * DESIGN_HEIGHT;
+  const fullWidth = block.width * DESIGN_WIDTH;
+  const exclusionWidth = Math.min(fullWidth * 0.55, fullWidth * 0.28 + 10);
+  const shortWidth = Math.max(fullWidth * 0.35, fullWidth - exclusionWidth);
+  let index = 0;
+
+  for (let lineIndex = 0; lineIndex < maxLines && index < units.length; lineIndex += 1) {
+    const restrictRight = block.fieldKey === 'headline' && lineIndex >= maxLines - 3;
+    const restrictLeft = block.fieldKey === 'body' && lineIndex < 3;
+    const maxWidth = restrictRight || restrictLeft ? shortWidth : fullWidth;
+    const line = fitTextLine(ctx, units, index, maxWidth);
+    ctx.fillText(line.line, x + (restrictLeft ? exclusionWidth : 0), y + (lineIndex * metrics.lineHeight));
+    index = line.nextIndex;
+  }
+}
+
 export async function renderFixedTemplate(ctx, templateId, values, files, helpers) {
   const layout = getFixedTemplateLayout(templateId);
   if (!layout) return;
@@ -329,22 +390,26 @@ export async function renderFixedTemplate(ctx, templateId, values, files, helper
     ctx.save();
     ctx.textAlign = block.align || 'left';
     ctx.font = `${metrics.weight} ${Math.round(metrics.fontSize)}px ${getTextFontStack(block.fieldKey, metrics.fallbackStack)}`;
-    addWrappedText(ctx, text, {
-      x: (block.align || 'left') === 'center'
-        ? (block.x + (block.width / 2)) * DESIGN_WIDTH
-        : block.x * DESIGN_WIDTH,
-      y: block.y * DESIGN_HEIGHT,
-      maxWidth: block.width * DESIGN_WIDTH,
-      lineHeight: metrics.lineHeight,
-      maxLines: metrics.maxLines,
-      align: block.align || 'left',
-      exclusions: (block.exclusions || []).map((exclusion) => ({
-        x: exclusion.x * DESIGN_WIDTH,
-        y: exclusion.y * DESIGN_HEIGHT,
-        width: exclusion.width * DESIGN_WIDTH,
-        height: exclusion.height * DESIGN_HEIGHT,
-      })),
-    });
+    if (templateId === 'page7' && (block.fieldKey === 'headline' || block.fieldKey === 'body')) {
+      drawPage7ConstrainedText(ctx, text, block, metrics);
+    } else {
+      addWrappedText(ctx, text, {
+        x: (block.align || 'left') === 'center'
+          ? (block.x + (block.width / 2)) * DESIGN_WIDTH
+          : block.x * DESIGN_WIDTH,
+        y: block.y * DESIGN_HEIGHT,
+        maxWidth: block.width * DESIGN_WIDTH,
+        lineHeight: metrics.lineHeight,
+        maxLines: metrics.maxLines,
+        align: block.align || 'left',
+        exclusions: (block.exclusions || []).map((exclusion) => ({
+          x: exclusion.x * DESIGN_WIDTH,
+          y: exclusion.y * DESIGN_HEIGHT,
+          width: exclusion.width * DESIGN_WIDTH,
+          height: exclusion.height * DESIGN_HEIGHT,
+        })),
+      });
+    }
     ctx.restore();
   }
 

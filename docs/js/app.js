@@ -3,6 +3,7 @@ import { renderCommentsModal } from './components/modals.js';
 import { getIcon } from './components/icons.js';
 import { getState, addPost, updatePost, deletePost, toggleLike, toggleSave, addComment, addImpression, updateProfile, toggleFollow, saveIssue, upsertDraft, deleteDraft } from './core/store.js';
 import { renderOpening } from './pages/opening.js';
+import { renderInvite } from './pages/invite.js';
 import { renderHome, renderTimeline } from './pages/timeline.js';
 import { renderSearch } from './pages/search.js';
 import { renderCompose } from './pages/compose.js';
@@ -64,6 +65,7 @@ const uiState = {
   postReturnProfileAuthor: null,
   profileReturnState: null,
   composeReturnState: null,
+  postDetailShouldScroll: false,
 };
 
 const HOME_THEME_ORDER = ['dark', 'light', 'system'];
@@ -85,6 +87,7 @@ const COMPOSE_TEXT_FONT_STACKS = {
 const COMPOSE_TEXT_FONT_IDS = new Set(Object.keys(COMPOSE_TEXT_FONT_STACKS));
 
 const composePreviewDefaults = {
+  text: 'text',
   headline: 'text',
   subhead: 'text',
   intro: 'text',
@@ -120,6 +123,7 @@ function createComposeTextStyleValue(source = {}) {
 
 function createComposeTextStyleState(source = {}) {
   return {
+    text: createComposeTextStyleValue(source.text),
     headline: createComposeTextStyleValue(source.headline),
     subhead: createComposeTextStyleValue(source.subhead),
     intro: createComposeTextStyleValue(source.intro),
@@ -130,9 +134,11 @@ function createComposeTextStyleState(source = {}) {
 }
 
 function createComposeWorkingDraft(source = {}) {
+  const textValue = source.text || source.headline || composePreviewDefaults.text;
   return {
     templateId: source.templateId || DEFAULT_COMPOSE_TEMPLATE,
     backgroundColor: source.backgroundColor || '#f8f4ee',
+    text: textValue,
     headline: source.headline || composePreviewDefaults.headline,
     subhead: source.subhead || composePreviewDefaults.subhead,
     intro: source.intro || composePreviewDefaults.intro,
@@ -238,6 +244,8 @@ function getPageHtml() {
       return renderTimeline(state, uiState);
     case 'search':
       return renderSearch(state, uiState);
+    case 'invite':
+      return renderInvite();
     case 'compose':
       return renderCompose({
         stage: uiState.composeStage,
@@ -250,8 +258,16 @@ function getPageHtml() {
       return renderMagazine(state);
     case 'profile':
       return renderProfile(state, uiState);
-    case 'post':
-      return renderPostDetail(getActivePost(uiState.previewPostId), { canDelete: isOwnPost(getActivePost(uiState.previewPostId)) });
+    case 'post': {
+      const post = getActivePost(uiState.previewPostId);
+      const posts = [...(state.posts || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return renderPostDetail(post, {
+        posts,
+        currentUserName: state.profile.name,
+        title: uiState.postReturnScreen === 'profile' ? post?.authorName : '',
+        showOwnerMenu: uiState.postReturnScreen === 'profile',
+      });
+    }
     default:
       return renderHome(state, uiState);
   }
@@ -293,6 +309,10 @@ function renderShell() {
     screenAreaClasses.push('screen-area--search');
   } else if (uiState.screen === 'profile') {
     screenAreaClasses.push('screen-area--profile');
+  } else if (uiState.screen === 'post') {
+    screenAreaClasses.push('screen-area--post');
+  } else if (uiState.screen === 'invite') {
+    screenAreaClasses.push('screen-area--invite');
   }
 
   app.innerHTML = `
@@ -422,7 +442,8 @@ function enterTimelineFromOpening() {
   uiState.openingTapGuardUntil = Date.now() + 700;
   uiState.postReturnScreen = 'home';
   uiState.postReturnProfileAuthor = null;
-  navigate('home');
+  uiState.screen = 'invite';
+  render();
 }
 
 function openProfile(authorName) {
@@ -456,6 +477,7 @@ function openPostDetail(postId) {
   uiState.screen = 'post';
   uiState.previewPostId = postId;
   uiState.commentPostId = null;
+  uiState.postDetailShouldScroll = true;
   render();
 }
 
@@ -541,6 +563,49 @@ function openComposeDraft(draftId) {
   render();
 }
 
+async function publishComposeDraft(draftId) {
+  const draft = getState().drafts.find((item) => item.id === draftId);
+  if (!draft?.composeData) return;
+  const draftSnapshot = createComposeWorkingDraft(draft.composeData);
+  const values = {
+    templateId: draftSnapshot.templateId,
+    backgroundColor: draftSnapshot.backgroundColor,
+    text: draftSnapshot.text,
+    headline: draftSnapshot.headline,
+    subhead: draftSnapshot.subhead,
+    intro: draftSnapshot.intro,
+    body: draftSnapshot.body,
+    date: draftSnapshot.date,
+    editor: draftSnapshot.editor,
+    textStyles: draftSnapshot.textStyles,
+    customLayout: draftSnapshot.customLayout,
+  };
+  const imageData = await renderComposeTemplate(values, draftSnapshot.standardFiles, {});
+  const profileName = String(getState().profile?.name || 'you').trim() || 'you';
+
+  addPost({
+    authorName: profileName,
+    caption: buildComposeCaption(values),
+    imageData,
+    fixedTags: draftSnapshot.fixedTags,
+    freeTags: draftSnapshot.freeTags,
+    composeData: {
+      ...values,
+      fixedTags: draftSnapshot.fixedTags,
+      freeTags: draftSnapshot.freeTags,
+      standardFiles: draftSnapshot.standardFiles,
+    },
+  });
+  deleteDraft(draftId);
+  uiState.composeDraftId = null;
+  uiState.composeWorkingDraft = null;
+  uiState.composeEditingPostId = null;
+  uiState.screen = 'timeline';
+  uiState.timelineTab = 'recommended';
+  uiState.profileSection = 'pages';
+  render();
+}
+
 function closeCompose() {
   persistComposeDraftOnExit();
   const snapshot = uiState.composeReturnState;
@@ -555,6 +620,20 @@ function closePostDetail() {
   uiState.commentPostId = null;
   uiState.profileEditOpen = false;
   uiState.profileAuthor = uiState.screen === 'profile' ? uiState.postReturnProfileAuthor : null;
+  render();
+}
+
+function openSearchForTag(tag) {
+  const normalizedTag = String(tag || '').trim();
+  if (!normalizedTag) return;
+  uiState.screen = 'search';
+  uiState.previewPostId = null;
+  uiState.commentPostId = null;
+  uiState.searchQuery = normalizedTag;
+  uiState.searchTags = [];
+  uiState.searchSort = 'popular';
+  uiState.profileEditOpen = false;
+  uiState.profileAuthor = null;
   render();
 }
 
@@ -1283,6 +1362,12 @@ function bindPostInteractions(scope = document) {
     });
   });
 
+  scope.querySelectorAll('[data-post-tag]').forEach((button) => {
+    button.addEventListener('click', () => {
+      openSearchForTag(button.dataset.postTag);
+    });
+  });
+
   scope.querySelectorAll('[data-open-preview]').forEach((button) => {
     button.addEventListener('click', (event) => {
       if (Date.now() < uiState.openingTapGuardUntil) {
@@ -1301,6 +1386,28 @@ function bindPostInteractions(scope = document) {
       openProfile(button.dataset.openAuthor);
     });
   });
+
+  scope.querySelectorAll('[data-post-owner-menu]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const card = button.closest('[data-post-detail-card]');
+      const menu = card?.querySelector('[data-post-owner-actions]');
+      if (!menu) return;
+      menu.hidden = !menu.hidden;
+    });
+  });
+
+  scope.querySelectorAll('[data-edit-post]').forEach((button) => {
+    button.addEventListener('click', () => {
+      openPostEdit(button.dataset.editPost);
+    });
+  });
+
+  if (uiState.screen === 'post' && uiState.postDetailShouldScroll) {
+    uiState.postDetailShouldScroll = false;
+    requestAnimationFrame(() => {
+      document.querySelector('[data-post-detail-active]')?.scrollIntoView({ block: 'start' });
+    });
+  }
 }
 
 function bindHomeEvents() {
@@ -1480,6 +1587,49 @@ function bindScreenNavigationEvents() {
       closeCompose();
     });
   });
+}
+
+function normalizeInviteCode(value = '') {
+  return String(value)
+    .replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/\D/g, '')
+    .slice(0, 4);
+}
+
+function bindInviteEvents() {
+  const form = document.querySelector('[data-invite-form]');
+  const input = document.querySelector('[data-invite-code]');
+  const error = document.querySelector('[data-invite-error]');
+  if (!form || !input) return;
+
+  const unlock = () => {
+    uiState.openingTapGuardUntil = Date.now() + 700;
+    navigate('home');
+  };
+
+  input.addEventListener('input', () => {
+    const normalized = normalizeInviteCode(input.value);
+    input.value = normalized;
+    if (error) error.hidden = true;
+    if (normalized === '0000') {
+      unlock();
+    }
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const normalized = normalizeInviteCode(input.value);
+    input.value = normalized;
+    if (normalized === '0000') {
+      unlock();
+      return;
+    }
+    if (error) error.hidden = false;
+    input.focus();
+    input.select();
+  });
+
+  requestAnimationFrame(() => input.focus());
 }
 
 function buildComposeCaption(values) {
@@ -1816,6 +1966,7 @@ function bindComposeEvents() {
   };
   const customImageFiles = {};
   const editableKeyMap = {
+    text: document.querySelector('[data-editable="text"]'),
     headline: document.querySelector('[data-editable="headline"]'),
     subhead: document.querySelector('[data-editable="subhead"]'),
     intro: document.querySelector('[data-editable="intro"]'),
@@ -1846,7 +1997,8 @@ function bindComposeEvents() {
   let textTrayJustDragged = false;
 
   const composeTextLabels = {
-    headline: 'Headline',
+    text: 'Text',
+    headline: 'Text',
     subhead: 'Subhead',
     intro: 'Notes',
     body: 'Body',
@@ -2090,10 +2242,15 @@ function bindComposeEvents() {
       });
     }
 
+    const editableTextValue = getEditableValue('text');
+    const editableHeadlineValue = getEditableValue('headline');
+    const headlineValue = editableTextValue || editableHeadlineValue || baseDraft.headline;
+
     return persistComposeDraft({
       fixedTags,
       freeTags,
-      headline: getEditableValue('headline') || baseDraft.headline,
+      text: editableTextValue || baseDraft.text || headlineValue,
+      headline: headlineValue,
       subhead: getEditableValue('subhead') || baseDraft.subhead,
       intro: getEditableValue('intro') || baseDraft.intro,
       body: getEditableValue('body') || baseDraft.body,
@@ -2235,13 +2392,15 @@ function bindComposeEvents() {
     const measure = document.createElement('div');
     measure.setAttribute('aria-hidden', 'true');
     measure.className = element.className;
-    if (element.dataset.composeExclusionSide) {
-      measure.dataset.composeExclusionSide = element.dataset.composeExclusionSide;
-      measure.style.setProperty('--compose-exclusion-top', element.style.getPropertyValue('--compose-exclusion-top'));
-      measure.style.setProperty('--compose-exclusion-width', element.style.getPropertyValue('--compose-exclusion-width'));
-      measure.style.setProperty('--compose-exclusion-height', element.style.getPropertyValue('--compose-exclusion-height'));
-      measure.style.setProperty('--compose-exclusion-bottom', element.style.getPropertyValue('--compose-exclusion-bottom'));
-    }
+      if (element.dataset.composeExclusionSide) {
+        measure.dataset.composeExclusionSide = element.dataset.composeExclusionSide;
+        measure.style.setProperty('--compose-exclusion-top', element.style.getPropertyValue('--compose-exclusion-top'));
+        measure.style.setProperty('--compose-exclusion-width', element.style.getPropertyValue('--compose-exclusion-width'));
+        measure.style.setProperty('--compose-exclusion-height', element.style.getPropertyValue('--compose-exclusion-height'));
+        measure.style.setProperty('--compose-exclusion-bottom', element.style.getPropertyValue('--compose-exclusion-bottom'));
+        measure.style.setProperty('--compose-fixed-line-height', element.style.getPropertyValue('--compose-fixed-line-height'));
+        measure.style.setProperty('--compose-fixed-block-height', element.style.getPropertyValue('--compose-fixed-block-height'));
+      }
     measure.style.position = 'absolute';
     measure.style.left = '-99999px';
     measure.style.top = '0';
@@ -2274,6 +2433,95 @@ function bindComposeEvents() {
     return element.dataset.singleLine === 'true'
       ? text.replace(/\n+/g, ' ')
       : text;
+  }
+
+  function isPage7ConstrainedEditable(element) {
+    return composeSheet?.dataset.template === 'page7'
+      && (element?.dataset.editable === 'headline' || element?.dataset.editable === 'body');
+  }
+
+  function getPage7RawText(element) {
+    return normalizeEditableValue(element, element.innerText).replace(/\n+/g, '');
+  }
+
+  function measurePage7TextWidth(element, value) {
+    const computed = window.getComputedStyle(element);
+    const canvas = measurePage7TextWidth.canvas || document.createElement('canvas');
+    measurePage7TextWidth.canvas = canvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return value.length * parseFloat(computed.fontSize || '14');
+    ctx.font = `${computed.fontStyle || 'normal'} ${computed.fontWeight || '400'} ${computed.fontSize || '14px'} ${computed.fontFamily || 'sans-serif'}`;
+    return ctx.measureText(value).width;
+  }
+
+  function fitPage7Line(element, units, startIndex, maxWidth) {
+    let line = '';
+    let index = startIndex;
+    while (index < units.length) {
+      const candidate = `${line}${units[index]}`;
+      if (line && measurePage7TextWidth(element, candidate) > maxWidth) {
+        break;
+      }
+      line = candidate;
+      index += 1;
+      if (measurePage7TextWidth(element, line) > maxWidth) {
+        break;
+      }
+    }
+    return { line, nextIndex: Math.max(index, startIndex + (line ? 0 : 1)) };
+  }
+
+  function buildPage7LinePlan(element) {
+    const rect = element.getBoundingClientRect();
+    const computed = window.getComputedStyle(element);
+    const fontSize = parseFloat(computed.fontSize || '14');
+    const lineHeight = parseFloat(computed.lineHeight || `${fontSize * 1.3}`) || (fontSize * 1.3);
+    const maxLines = Math.max(1, Math.floor(((rect.height || element.clientHeight) + 1) / lineHeight));
+    const fullWidth = rect.width || element.clientWidth;
+    const exclusionWidth = Math.min(fullWidth * 0.55, fullWidth * 0.28 + 10);
+    const shortWidth = Math.max(fullWidth * 0.35, fullWidth - exclusionWidth);
+    return Array.from({ length: maxLines }, (_, index) => {
+      const isHeadlineRestricted = element.dataset.editable === 'headline' && index >= maxLines - 3;
+      const isBodyRestricted = element.dataset.editable === 'body' && index < 3;
+      return {
+        width: isHeadlineRestricted || isBodyRestricted ? shortWidth : fullWidth,
+        boxWidth: fullWidth,
+        indent: isBodyRestricted ? exclusionWidth : 0,
+        restricted: isHeadlineRestricted || isBodyRestricted,
+      };
+    });
+  }
+
+  function renderPage7Lines(element, rawText) {
+    const text = normalizeEditableValue(element, rawText).replace(/\n+/g, '');
+    const linePlan = buildPage7LinePlan(element);
+    const units = Array.from(text);
+    const lines = [];
+    let index = 0;
+    for (const plan of linePlan) {
+      if (index >= units.length) break;
+      const fitted = fitPage7Line(element, units, index, plan.width);
+      const line = units.slice(index, fitted.nextIndex).join('');
+      lines.push({ ...plan, text: line });
+      index = fitted.nextIndex;
+    }
+    const acceptedText = units.slice(0, index).join('');
+    element.dataset.page7RawText = acceptedText;
+    if (!acceptedText) {
+      element.textContent = '';
+      return false;
+    }
+    element.innerHTML = lines.map((line) => {
+      const escaped = line.text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const style = line.indent
+        ? ` style="padding-left:${line.indent}px;width:${line.boxWidth}px;"`
+        : ` style="width:${line.width}px;"`;
+      return `<div class="compose-page7-line"${style}>${escaped || '<br>'}</div>`;
+    }).join('');
+    return acceptedText.length === text.length;
   }
 
   function editableTextFits(element, value) {
@@ -2313,11 +2561,48 @@ function bindComposeEvents() {
     return units.slice(0, low).join('');
   }
 
+  function shouldClampEditable(element) {
+    const templateId = composeSheet?.dataset.template;
+    return !(element?.dataset.editable === 'text' && (templateId === 'page4' || templateId === 'page5'));
+  }
+
+  function shouldUseBoxLimit(element) {
+    return !shouldClampEditable(element);
+  }
+
+  function editableOverflowsBox(element) {
+    return element.scrollHeight > element.clientHeight + 2
+      || element.scrollWidth > element.clientWidth + 2;
+  }
+
+  function limitEditableToBox(element) {
+    if (isPage7ConstrainedEditable(element)) {
+      const rawText = getPage7RawText(element);
+      const fits = renderPage7Lines(element, rawText);
+      element.dataset.previousValue = element.dataset.page7RawText || '';
+      return !fits;
+    }
+    if (!editableOverflowsBox(element)) {
+      element.dataset.previousValue = getEditableText(element);
+      return false;
+    }
+    setEditablePlainText(element, element.dataset.previousValue || '');
+    return true;
+  }
+
   function setEditablePlainText(element, value) {
     element.textContent = normalizeEditableValue(element, value);
   }
 
   function clampEditable(element) {
+    if (isPage7ConstrainedEditable(element)) {
+      limitEditableToBox(element);
+      return;
+    }
+    if (shouldUseBoxLimit(element)) {
+      limitEditableToBox(element);
+      return;
+    }
     const value = normalizeEditableValue(element, element.innerText);
     if (!element.dataset.previousValue) {
       element.dataset.previousValue = value;
@@ -2334,6 +2619,9 @@ function bindComposeEvents() {
   }
 
   function getEditableText(element) {
+    if (isPage7ConstrainedEditable(element)) {
+      return getPage7RawText(element);
+    }
     return normalizeEditableValue(element, element.innerText);
   }
 
@@ -2401,6 +2689,9 @@ function bindComposeEvents() {
   function getEditableValue(name) {
     const target = document.querySelector(`[data-editable="${name}"]`);
     if (!target) return '';
+    if (isPage7ConstrainedEditable(target)) {
+      return getPage7RawText(target).trim();
+    }
     return target.innerText.replace(/\r/g, '').trim();
   }
 
@@ -3416,6 +3707,11 @@ function bindComposeEvents() {
       element.style.removeProperty('--compose-exclusion-top');
       element.style.removeProperty('--compose-exclusion-width');
       element.style.removeProperty('--compose-exclusion-height');
+      element.style.removeProperty('--compose-exclusion-bottom');
+      element.style.removeProperty('--compose-fixed-line-height');
+      element.style.removeProperty('--compose-fixed-block-height');
+      element.classList.remove('compose-editable--page7-lines');
+      delete element.dataset.page7RawText;
       element.dataset.singleLine = element.dataset.defaultSingleLine || 'false';
       delete element.dataset.composeBaseFontSize;
       delete element.dataset.composeBaseLineHeight;
@@ -3430,6 +3726,7 @@ function bindComposeEvents() {
       const metrics = getFixedTemplateTextMetrics(block.fieldKey, block);
       element.style.display = 'block';
       element.style.pointerEvents = 'auto';
+      element.setAttribute('contenteditable', composeStage === 'edit' ? 'true' : 'false');
       element.style.zIndex = String(60 + index);
       element.style.left = `${block.x * 100}%`;
       element.style.top = `${block.y * 100}%`;
@@ -3452,12 +3749,43 @@ function bindComposeEvents() {
             ? 'true'
             : 'false';
       const exclusion = block.exclusions?.[0];
-      if (exclusion) {
+      if (templateId === 'page7' && (block.fieldKey === 'headline' || block.fieldKey === 'body')) {
+        element.classList.add('compose-editable--page7-lines');
+        element.removeAttribute('data-compose-exclusion-side');
+        element.style.removeProperty('--compose-exclusion-top');
+        element.style.removeProperty('--compose-exclusion-width');
+        element.style.removeProperty('--compose-exclusion-height');
+        element.style.removeProperty('--compose-exclusion-bottom');
+        element.dataset.page7RawText = normalizeEditableValue(element, element.dataset.page7RawText || element.innerText).replace(/\n+/g, '');
+        renderPage7Lines(element, element.dataset.page7RawText);
+      } else {
+        element.classList.remove('compose-editable--page7-lines');
+        delete element.dataset.page7RawText;
+      }
+      if (exclusion && !isPage7ConstrainedEditable(element)) {
         element.dataset.composeExclusionSide = exclusion.side;
-        element.style.setProperty('--compose-exclusion-top', `${(exclusion.offsetTop / block.height) * 100}%`);
-        element.style.setProperty('--compose-exclusion-width', `${(exclusion.width / block.width) * 100}%`);
+        const blockPixelHeight = element.getBoundingClientRect().height || (block.height * composeSheet.getBoundingClientRect().height);
+        const threeLinePercent = blockPixelHeight > 0
+          ? Math.min(100, (metrics.lineHeight * 3 / blockPixelHeight) * 100)
+          : 0;
+        const defaultTop = (exclusion.offsetTop / block.height) * 100;
+        const defaultBottom = ((exclusion.offsetTop + exclusion.height) / block.height) * 100;
+        const isPage7 = templateId === 'page7';
+        const exclusionTop = isPage7 && block.fieldKey === 'headline'
+          ? Math.max(0, 100 - threeLinePercent)
+          : defaultTop;
+        const exclusionBottom = isPage7 && block.fieldKey === 'body'
+          ? Math.min(100, threeLinePercent)
+          : defaultBottom;
+        const exclusionWidth = isPage7
+          ? Math.min(100, (exclusion.width / block.width) * 100 + 6)
+          : (exclusion.width / block.width) * 100;
+        element.style.setProperty('--compose-fixed-line-height', `${Math.round(metrics.lineHeight)}px`);
+        element.style.setProperty('--compose-fixed-block-height', `${blockPixelHeight}px`);
+        element.style.setProperty('--compose-exclusion-top', `${exclusionTop}%`);
+        element.style.setProperty('--compose-exclusion-width', `${exclusionWidth}%`);
         element.style.setProperty('--compose-exclusion-height', `${(exclusion.height / block.height) * 100}%`);
-        element.style.setProperty('--compose-exclusion-bottom', `${((exclusion.offsetTop + exclusion.height) / block.height) * 100}%`);
+        element.style.setProperty('--compose-exclusion-bottom', `${exclusionBottom}%`);
       }
     });
 
@@ -3737,6 +4065,13 @@ function bindComposeEvents() {
   editables.forEach((element) => {
     const fieldKey = element.dataset.editable;
     if (!fieldKey) return;
+    element.addEventListener('pointerdown', () => {
+      if (element.getAttribute('contenteditable') !== 'true') return;
+      window.setTimeout(() => {
+        element.focus();
+        openComposeTextTray(fieldKey);
+      }, 0);
+    });
     element.addEventListener('focus', () => {
       openComposeTextTray(fieldKey);
     });
@@ -4070,7 +4405,7 @@ function bindComposeEvents() {
     element.addEventListener('input', () => {
       const rawValue = getEditableText(element);
       clampEditable(element);
-      if (getEditableText(element) !== rawValue) {
+      if (isPage7ConstrainedEditable(element) || getEditableText(element) !== rawValue) {
         placeCaretAtEnd(element);
       }
     });
@@ -4107,6 +4442,34 @@ function bindComposeEvents() {
     });
   });
 
+  document.querySelectorAll('[data-save-compose-image]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const draftSnapshot = buildComposeDraftSnapshot();
+      const values = {
+        templateId: draftSnapshot.templateId,
+        backgroundColor: draftSnapshot.backgroundColor,
+        text: draftSnapshot.text,
+        headline: draftSnapshot.headline,
+        subhead: draftSnapshot.subhead,
+        intro: draftSnapshot.intro,
+        body: draftSnapshot.body,
+        date: draftSnapshot.date,
+        editor: draftSnapshot.editor,
+        textStyles: draftSnapshot.textStyles,
+        customLayout: draftSnapshot.customLayout,
+      };
+      const imageData = await renderComposeTemplate(values, draftSnapshot.standardFiles, {});
+      if (!imageData) return;
+      const link = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+      link.href = imageData;
+      link.download = `burn-page-${stamp}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+  });
+
   if (composeStage !== 'tags') {
     return;
   }
@@ -4117,6 +4480,7 @@ function bindComposeEvents() {
     const values = {
       templateId: draftSnapshot.templateId,
       backgroundColor: draftSnapshot.backgroundColor,
+      text: draftSnapshot.text,
       headline: draftSnapshot.headline,
       subhead: draftSnapshot.subhead,
       intro: draftSnapshot.intro,
@@ -4286,8 +4650,31 @@ function bindProfileEvents() {
   }
 
   document.querySelectorAll('[data-open-draft]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
       openComposeDraft(button.dataset.openDraft);
+    });
+  });
+
+  document.querySelectorAll('[data-toggle-draft-menu]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const targetId = button.dataset.toggleDraftMenu;
+      document.querySelectorAll('[data-draft-actions]').forEach((menu) => {
+        const shouldOpen = menu.dataset.draftActions === targetId && menu.hidden;
+        menu.hidden = !shouldOpen;
+        if (menu.dataset.draftActions === targetId) {
+          button.setAttribute('aria-expanded', String(shouldOpen));
+        }
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-publish-draft]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      button.disabled = true;
+      await publishComposeDraft(button.dataset.publishDraft);
     });
   });
 
@@ -4484,6 +4871,9 @@ function bindPageEvents() {
       break;
     case 'search':
       bindSearchEvents();
+      break;
+    case 'invite':
+      bindInviteEvents();
       break;
     case 'compose':
       bindComposeEvents();

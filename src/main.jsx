@@ -7,6 +7,7 @@ import '../docs/css/base.css';
 import '../docs/css/layout.css';
 import '../docs/css/components.css';
 import '../docs/css/opening.css';
+import '../docs/css/invite.css';
 import '../docs/css/timeline.css';
 import '../docs/css/search.css';
 import '../docs/css/compose.css';

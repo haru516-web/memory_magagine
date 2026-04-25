@@ -11,7 +11,10 @@
     calc(env(safe-area-inset-top, 0px) + 10px)
     14px
     calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 18px);
-  background: linear-gradient(180deg, #fcfaf6 0%, #f7f2ea 100%);
+  background: #fcfbf8;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .profile-journal-head {
@@ -186,10 +189,9 @@
 .profile-draft-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
-.profile-archive-card,
 .profile-draft-card {
   position: relative;
   display: grid;
@@ -199,6 +201,15 @@
   border: 1px solid rgba(90, 70, 56, 0.08);
   background: rgba(255, 255, 255, 0.66);
   box-shadow: 0 10px 24px rgba(73, 56, 47, 0.05);
+}
+
+.profile-archive-card {
+  display: grid;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
 }
 
 .profile-archive-card__media,
@@ -212,10 +223,10 @@
 .profile-archive-card__media {
   display: block;
   width: 100%;
-  aspect-ratio: 0.76;
+  aspect-ratio: 210 / 297;
   overflow: hidden;
   border-radius: 0;
-  background: rgba(233, 223, 215, 0.56);
+  background: rgba(233, 223, 215, 0.58);
 }
 
 .profile-archive-card__media img,
@@ -354,6 +365,41 @@
 .profile-draft-card__menu svg {
   width: 16px;
   height: 16px;
+}
+
+.profile-draft-card__actions {
+  position: absolute;
+  top: 40px;
+  right: 8px;
+  z-index: 4;
+  min-width: 132px;
+  overflow: hidden;
+  border: 1px solid rgba(90, 70, 56, 0.1);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 12px 28px rgba(73, 56, 47, 0.16);
+}
+
+.profile-draft-card__actions[hidden] {
+  display: none;
+}
+
+.profile-draft-card__actions button {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(90, 70, 56, 0.08);
+  color: #2f2520;
+  font-size: 12px;
+  text-align: left;
+  background: transparent;
+}
+
+.profile-draft-card__actions button:last-child {
+  border-bottom: 0;
+}
+
+.profile-draft-card__action-danger {
+  color: #8f4350 !important;
 }
 
 .profile-draft-card__body {

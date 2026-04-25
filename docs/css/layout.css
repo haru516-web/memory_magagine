@@ -134,6 +134,27 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.screen-area--post {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: 52px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.screen-area--invite {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  padding: 0;
+  overflow: hidden;
+}
+
 .screen-area--compose {
   min-height: 100vh;
   min-height: 100dvh;

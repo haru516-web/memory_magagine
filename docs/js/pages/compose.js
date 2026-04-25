@@ -152,6 +152,7 @@ function renderComposeEditHeaderActions(isEditing) {
     <div class="compose-stage-header__inline-actions">
       <button class="button button--ghost compose-draft-button compose-draft-button--header" type="button" data-save-compose-draft>Save Draft</button>
       <button class="button button--primary compose-submit-button compose-submit-button--header" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'Tags'}</button>
+      <button class="button button--ghost compose-save-image-button compose-save-image-button--header" type="button" data-save-compose-image>Save</button>
     </div>
   `;
 }
@@ -272,13 +273,26 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
         <div class="compose-sheet__shape-mask" data-compose-shape-mask="1" hidden></div>
         <div class="compose-custom-canvas" data-custom-canvas hidden></div>
         <div
+          class="compose-sheet__text compose-editable"
+          data-editable="text"
+          data-placeholder="text"
+          data-default-single-line="false"
+          contenteditable="${editableAttr}"
+          tabindex="0"
+          inputmode="text"
+          spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'text')}
+        >${values.text}</div>
+        <div
           class="compose-sheet__headline compose-editable"
           data-editable="headline"
-          data-placeholder="headline"
+          data-placeholder="text"
           data-max-chars="42"
           data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
+          tabindex="0"
+          inputmode="text"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'headline')}
         >${values.headline}</div>
@@ -479,13 +493,10 @@ function renderEditorScreen({ values, selectedId, selectedBackground, isEditing 
       <header class="page-header page-header--with-back page-header--compose compose-stage-header compose-stage-header--edit">
         <div class="page-header__actions page-header__actions--compose">
           ${renderComposeBackButton('data-compose-stage-nav="select"')}
+          <h2 class="page-header__title compose-stage-header__title">Edit Page</h2>
+          ${renderComposeEditHeaderActions(isEditing)}
           ${isCustomTemplate ? renderComposeAddPopoverButton() : ''}
           ${isCustomTemplate ? renderComposeDeleteButton() : ''}
-          ${isCustomTemplate ? renderComposeTagsButton(isEditing) : ''}
-        </div>
-        <div class="compose-stage-header__title-wrap ${isCustomTemplate ? '' : 'compose-stage-header__title-wrap--with-actions'}">
-          ${isCustomTemplate ? '' : '<h2 class="page-header__title compose-stage-header__title">Edit Page</h2>'}
-          ${isCustomTemplate ? '' : renderComposeEditHeaderActions(isEditing)}
         </div>
       </header>
 
@@ -545,6 +556,7 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
     : { selectedTemplateId };
   const draft = options.draft || {};
   const values = {
+    text: draft.text || draft.headline || 'text',
     headline: draft.headline || 'text',
     subhead: draft.subhead || 'text',
     intro: draft.intro || 'text',

@@ -1,7 +1,6 @@
 import { getIcon } from '../components/icons.js';
 import { renderAvatarContent } from '../components/avatar.js';
 import { formatDate } from '../utils/date.js';
-import { renderTimelineFeedCard } from './timeline.js';
 
 function uniqueAuthors(posts) {
   return [...new Set(posts.map((post) => post.authorName))];
@@ -76,16 +75,29 @@ function collectOwnTags(posts) {
 }
 
 function renderArchiveCard(post) {
-  return renderTimelineFeedCard(post);
+  const title = getPostTitle(post);
+
+  return `
+    <article class="profile-archive-card" data-post-id="${post.id}">
+      <button class="profile-archive-card__media" type="button" data-open-preview="${post.id}" aria-label="Open ${title}">
+        <img src="${post.imageData}" alt="${title}" />
+      </button>
+    </article>
+  `;
 }
 
 function renderDraftCard(draft) {
   const preview = getDraftPreview(draft);
   return `
-    <article class="profile-draft-card" data-open-draft="${draft.id}">
-      <button class="profile-draft-card__menu" type="button" data-delete-draft="${draft.id}" aria-label="Delete draft">
+    <article class="profile-draft-card">
+      <button class="profile-draft-card__menu" type="button" data-toggle-draft-menu="${draft.id}" aria-label="Open draft menu" aria-expanded="false">
         ${getIcon('more')}
       </button>
+      <div class="profile-draft-card__actions" data-draft-actions="${draft.id}" hidden>
+        <button type="button" data-open-draft="${draft.id}">編集に戻る</button>
+        <button type="button" data-publish-draft="${draft.id}">投稿する</button>
+        <button type="button" data-delete-draft="${draft.id}" class="profile-draft-card__action-danger">削除する</button>
+      </div>
       <button class="profile-draft-card__body" type="button" data-open-draft="${draft.id}">
         <div class="profile-draft-card__copy">
           <h4 class="profile-draft-card__title">${getDraftTitle(draft)}</h4>
@@ -294,13 +306,15 @@ function renderOwnProfile(state, uiState, authors) {
 }
 
 function renderOtherProfile(state, viewedAuthor) {
-  const authors = uniqueAuthors(state.posts || []);
   const authorPosts = state.posts.filter((post) => post.authorName === viewedAuthor);
   const isFollowing = state.followingAuthors.includes(viewedAuthor);
 
   return `
     <section class="page page--profile">
-      <header class="page-header">
+      <header class="page-header page-header--with-back">
+        <button class="button button--ghost page-back page-back--icon" type="button" data-close-profile aria-label="Back">
+          ${getIcon('returnLeft')}
+        </button>
         <div>
           <p class="page-header__mini">author profile</p>
           <h2 class="page-header__title">${viewedAuthor}</h2>
@@ -328,17 +342,6 @@ function renderOtherProfile(state, viewedAuthor) {
         </div>
         <div class="profile-archive-grid">
           ${authorPosts.length ? authorPosts.map((post) => renderArchiveCard(post)).join('') : '<p class="empty-copy">This author has no posts yet.</p>'}
-        </div>
-      </section>
-
-      <section class="section-block">
-        <div class="section-head">
-          <h3>Local Stats</h3>
-        </div>
-        <div class="stats-grid">
-          <article class="stat-card"><span>Posts</span><strong>${authorPosts.length}</strong></article>
-          <article class="stat-card"><span>Followers</span><strong>${authors.filter((author) => author !== viewedAuthor).length}</strong></article>
-          <article class="stat-card"><span>Following</span><strong>${Number(isFollowing)}</strong></article>
         </div>
       </section>
     </section>

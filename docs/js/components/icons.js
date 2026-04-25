@@ -3,14 +3,14 @@ export function getIcon(name) {
     timeline: 'image/icon/feature/timeline.png',
     search: 'image/icon/feature/search.png',
     searchLine: 'image/icon/feature/search.png',
-    settings: 'image/icon/feature/setting.png',
+    settings: 'image/icon/feature/settings.png',
     profile: 'image/icon/feature/profile.png',
     compose: 'image/icon/feature/add.png',
     post: 'image/icon/feature/post.png',
-    heart: 'image/icon/feature/good.png',
+    heart: 'image/icon/feature/like.png',
     comment: 'image/icon/feature/comment.png',
     save: 'image/icon/feature/save.png',
-    trash: 'image/icon/feature/delate.png',
+    trash: 'image/icon/feature/delete.png',
     edit: 'image/icon/feature/edit.png'
   };
 

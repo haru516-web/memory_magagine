@@ -467,6 +467,7 @@
   pointer-events: none;
 }
 
+.compose-sheet__text,
 .compose-sheet__headline,
 .compose-sheet__subhead,
 .compose-sheet__notes,
@@ -482,6 +483,19 @@
   outline: 0;
   cursor: text;
   overflow: hidden;
+}
+
+.compose-editable--page7-lines {
+  white-space: normal !important;
+}
+
+.compose-page7-line {
+  box-sizing: border-box;
+  display: block;
+  min-height: 1em;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: pre;
 }
 
 .compose-editable[data-compose-exclusion-side='left']::before,
@@ -1259,6 +1273,7 @@
   cursor: default;
 }
 
+.compose-sheet__text,
 .compose-sheet__headline {
   top: 5.8%;
   left: 7.5%;
@@ -2332,6 +2347,8 @@
   min-height: 4%;
   font-size: clamp(18px, 2.6vw, 30px);
   line-height: 1.2;
+  pointer-events: auto !important;
+  z-index: 120 !important;
 }
 
 .compose-sheet[data-template='page4'] .compose-sheet__subhead {
@@ -2414,6 +2431,8 @@
   min-height: 5%;
   font-size: clamp(17px, 2.6vw, 28px);
   line-height: 1.18;
+  pointer-events: auto !important;
+  z-index: 120 !important;
 }
 
 .compose-sheet[data-template='page5'] .compose-sheet__subhead {
@@ -2573,11 +2592,11 @@
 
 .compose-sheet[data-template='page7'] .compose-slot--secondary {
   left: 10.04%;
-  top: 53%;
+  top: 52.95%;
   right: auto;
   bottom: auto;
   width: 34.23%;
-  height: 42.2%;
+  height: 36.35%;
 }
 
 .compose-sheet[data-template='page7'] .compose-slot--accent {
@@ -2597,6 +2616,8 @@
   min-height: 36.35%;
   font-size: clamp(16px, 2.4vw, 26px);
   line-height: 1.2;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .compose-sheet[data-template='page7'] .compose-sheet__subhead {
@@ -2612,14 +2633,16 @@
 }
 
 .compose-sheet[data-template='page7'] .compose-sheet__body {
-  top: 53%;
+  top: 52.95%;
   left: 53.47%;
   right: auto;
   bottom: auto;
   width: 34.3%;
-  max-height: 42.2%;
+  max-height: 36.35%;
   font-size: clamp(11px, 1.6vw, 14px);
   line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .compose-sheet[data-template='page7'] .compose-sheet__date {
@@ -3028,7 +3051,7 @@
 }
 
 .compose-stage-header--edit {
-  grid-template-columns: auto minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .compose-stage-header__title-wrap {
@@ -3045,9 +3068,15 @@
 
 .compose-stage-header__title {
   margin: 0;
-  font-size: clamp(28px, 4.8vw, 34px);
+  font-size: clamp(18px, 4vw, 28px);
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.compose-sheet__text {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .compose-stage-header__inline-actions {
@@ -3058,11 +3087,12 @@
 }
 
 .compose-draft-button--header,
-.compose-submit-button--header {
+.compose-submit-button--header,
+.compose-save-image-button--header {
   width: auto;
   min-width: 0;
   min-height: 38px;
-  padding: 0 14px;
+  padding: 0 12px;
   border-radius: 999px;
   white-space: nowrap;
   position: static;
@@ -3076,9 +3106,11 @@
 .compose-stage-header--edit .page-header__actions--compose {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   justify-self: start;
   flex-wrap: nowrap;
+  min-width: 0;
+  width: 100%;
 }
 
 .compose-stage-header--edit .compose-header-tags-button {
@@ -3499,6 +3531,7 @@
   font-family: var(--compose-font-stack, inherit);
 }
 
+.compose-sheet__text,
 .compose-sheet__headline {
   font-size: calc(clamp(24px, 3.8vw, 38px) * var(--compose-text-scale, 1));
 }
@@ -3739,6 +3772,10 @@
   padding: calc(env(safe-area-inset-top, 0px) + 6px) 16px 0 !important;
 }
 
+.page--compose--edit .compose-stage-header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .page--compose--edit .compose-stage-header__title-wrap,
 .page--compose--tags .compose-stage-header__title-wrap {
   display: flex;
@@ -3746,10 +3783,46 @@
   padding-inline: 0;
 }
 
+.page--compose--edit .compose-stage-header__title-wrap--with-actions,
+.page--compose--edit .compose-stage-header__inline-actions,
+.page--compose--edit .compose-draft-button--header,
+.page--compose--edit .compose-submit-button--header,
+.page--compose--edit .compose-save-image-button--header {
+  pointer-events: auto;
+}
+
 .page--compose--edit .page-header__actions--compose {
+  display: flex !important;
   justify-self: start;
   align-self: center;
   padding-top: 0;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow: visible;
+}
+
+.page--compose--edit .page-header__actions--compose > * {
+  flex: 0 0 auto;
+}
+
+.page--compose--edit .page-header__actions--compose .compose-stage-header__title {
+  flex: 0 1 auto;
+}
+
+.page--compose--edit .compose-stage-header__inline-actions {
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.page--compose--edit .compose-draft-button--header,
+.page--compose--edit .compose-submit-button--header,
+.page--compose--edit .compose-save-image-button--header {
+  min-height: 34px;
+  padding: 0 9px;
+  font-size: 11px;
 }
 
 .page--compose--select .compose-close-button {
@@ -3821,14 +3894,15 @@
   }
 
   .page--compose--edit .compose-stage-header__inline-actions {
-    gap: 6px;
+    gap: 3px;
   }
 
   .page--compose--edit .compose-draft-button--header,
-  .page--compose--edit .compose-submit-button--header {
-    min-height: 34px;
-    padding: 0 10px;
-    font-size: 12px;
+  .page--compose--edit .compose-submit-button--header,
+  .page--compose--edit .compose-save-image-button--header {
+    min-height: 32px;
+    padding: 0 7px;
+    font-size: 10px;
   }
 
   .page--compose--edit .compose-editor--focus {
