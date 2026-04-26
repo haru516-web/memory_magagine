@@ -39,9 +39,10 @@ function normalizeComposeData(post) {
   return {
     ...composeData,
     standardFiles: {
-      primary: normalizeFileState(sourceFiles.primary, post.imageData || ''),
+      primary: normalizeFileState(sourceFiles.primary),
       secondary: normalizeFileState(sourceFiles.secondary),
       accent: normalizeFileState(sourceFiles.accent),
+      detail: normalizeFileState(sourceFiles.detail),
     },
   };
 }
@@ -77,6 +78,7 @@ function normalizeDraft(draft) {
   return {
     id: draft.id || createId('draft'),
     title: String(fallbackTitle || 'Untitled').trim() || 'Untitled',
+    imageData: draft.imageData || '',
     composeData,
     createdAt: draft.createdAt || new Date().toISOString(),
     updatedAt: draft.updatedAt || draft.createdAt || new Date().toISOString(),

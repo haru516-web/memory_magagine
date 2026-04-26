@@ -21,7 +21,6 @@ export function renderInvite() {
           />
         </label>
         <p class="invite-card__error" data-invite-error hidden>コードが違います</p>
-        <button class="button button--primary invite-card__submit" type="submit">GO</button>
       </form>
     </section>
   `;

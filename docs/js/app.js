@@ -60,6 +60,8 @@ const uiState = {
   composeEditingPostId: null,
   composeDraftId: null,
   composeWorkingDraft: null,
+  composePreparedImageData: null,
+  composePreparedImageDirty: true,
   openingTapGuardUntil: 0,
   postReturnScreen: 'timeline',
   postReturnProfileAuthor: null,
@@ -67,6 +69,7 @@ const uiState = {
   composeReturnState: null,
   postDetailShouldScroll: false,
 };
+let composeSelectionChangeCleanup = null;
 
 const HOME_THEME_ORDER = ['dark', 'light', 'system'];
 const COMPOSE_TEXT_FONT_STACKS = {
@@ -85,11 +88,78 @@ const COMPOSE_TEXT_FONT_STACKS = {
   'soft-serif': `'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
 };
 const COMPOSE_TEXT_FONT_IDS = new Set(Object.keys(COMPOSE_TEXT_FONT_STACKS));
+const COMPOSE_TEXT_FIELD_KEYS = ['text', 'headline', 'subhead', 'text2', 'text3', 'intro', 'body', 'date', 'editor'];
+
+function getComposeFontStackById(fontId) {
+  return COMPOSE_TEXT_FONT_STACKS[fontId] || '';
+}
+
+function getComposeRichTextFontIds(markup = '') {
+  if (!markup || typeof document === 'undefined') return [];
+  const template = document.createElement('template');
+  template.innerHTML = String(markup);
+  return Array.from(template.content.querySelectorAll('[data-compose-font-id]'))
+    .map((element) => element.dataset.composeFontId)
+    .filter((fontId) => COMPOSE_TEXT_FONT_IDS.has(fontId));
+}
+
+function normalizeComposeRichTextSizeScale(value) {
+  const scale = Number(value);
+  return Number.isFinite(scale) ? Math.min(4, Math.max(1, scale)) : null;
+}
+
+async function waitForComposeFonts(values = {}) {
+  if (!document.fonts?.load) return;
+  const stacks = new Set([
+    '"Cormorant Garamond", "Times New Roman", serif',
+    '"Noto Sans JP", sans-serif',
+  ]);
+
+  Object.values(values.textStyles || {}).forEach((style) => {
+    const stack = getComposeFontStackById(style?.family);
+    if (stack) stacks.add(stack);
+  });
+  Object.values(values.richTexts || {}).forEach((markup) => {
+    getComposeRichTextFontIds(markup).forEach((fontId) => {
+      const stack = getComposeFontStackById(fontId);
+      if (stack) stacks.add(stack);
+    });
+  });
+
+  const customLayout = values.customLayout || {};
+  if (Array.isArray(customLayout.textBoxes)) {
+    customLayout.textBoxes.forEach((box) => {
+      stacks.add(box?.family === 'serif'
+        ? '"Cormorant Garamond", "Times New Roman", serif'
+        : '"Noto Sans JP", sans-serif');
+    });
+  }
+  if (Array.isArray(customLayout.pretextBoxes)) {
+    customLayout.pretextBoxes.forEach((box) => {
+      if (box?.kind !== 'title' && box?.kind !== 'body') return;
+      if (box.data?.fontFamily) stacks.add(String(box.data.fontFamily));
+    });
+  }
+
+  try {
+    await Promise.race([
+      Promise.all(Array.from(stacks).flatMap((stack) => [
+        document.fonts.load(`400 32px ${stack}`),
+        document.fonts.load(`500 32px ${stack}`),
+        document.fonts.load(`600 32px ${stack}`),
+        document.fonts.load(`700 32px ${stack}`),
+      ])),
+      new Promise((resolve) => window.setTimeout(resolve, 1600)),
+    ]);
+  } catch {}
+}
 
 const composePreviewDefaults = {
   text: 'text',
   headline: 'text',
   subhead: 'text',
+  text2: 'text',
+  text3: 'text',
   intro: 'text',
   body: 'text',
   date: 'text',
@@ -122,14 +192,43 @@ function createComposeTextStyleValue(source = {}) {
 }
 
 function createComposeTextStyleState(source = {}) {
+  return COMPOSE_TEXT_FIELD_KEYS.reduce((next, fieldKey) => {
+    next[fieldKey] = createComposeTextStyleValue(source[fieldKey]);
+    return next;
+  }, {});
+}
+
+function createComposeRichTextState(source = {}) {
+  return COMPOSE_TEXT_FIELD_KEYS.reduce((next, fieldKey) => {
+    next[fieldKey] = typeof source[fieldKey] === 'string' ? source[fieldKey] : '';
+    return next;
+  }, {});
+}
+
+function createComposeFixedLayoutState(source = {}, templateId = DEFAULT_COMPOSE_TEMPLATE) {
+  const layout = source && typeof source === 'object' ? source : {};
+  const cloneRects = (items = {}, options = {}) => Object.entries(items || {}).reduce((next, [key, rect]) => {
+    if (!rect || typeof rect !== 'object') return next;
+    const x = Number(rect.x);
+    const y = Number(rect.y);
+    const width = Number(rect.width);
+    const height = Number(rect.height);
+    if (![x, y, width, height].every(Number.isFinite)) return next;
+    next[key] = {
+      x,
+      y,
+      width,
+      height,
+    };
+    if (options.includeAlign && ['left', 'center', 'right'].includes(rect.align)) {
+      next[key].align = rect.align;
+    }
+    return next;
+  }, {});
   return {
-    text: createComposeTextStyleValue(source.text),
-    headline: createComposeTextStyleValue(source.headline),
-    subhead: createComposeTextStyleValue(source.subhead),
-    intro: createComposeTextStyleValue(source.intro),
-    body: createComposeTextStyleValue(source.body),
-    date: createComposeTextStyleValue(source.date),
-    editor: createComposeTextStyleValue(source.editor),
+    templateId: layout.templateId || templateId || DEFAULT_COMPOSE_TEMPLATE,
+    images: cloneRects(layout.images),
+    texts: cloneRects(layout.texts, { includeAlign: true }),
   };
 }
 
@@ -141,11 +240,15 @@ function createComposeWorkingDraft(source = {}) {
     text: textValue,
     headline: source.headline || composePreviewDefaults.headline,
     subhead: source.subhead || composePreviewDefaults.subhead,
+    text2: source.text2 || composePreviewDefaults.text2,
+    text3: source.text3 || composePreviewDefaults.text3,
     intro: source.intro || composePreviewDefaults.intro,
     body: source.body || composePreviewDefaults.body,
     date: source.date || composePreviewDefaults.date,
     editor: source.editor || composePreviewDefaults.editor,
     textStyles: createComposeTextStyleState(source.textStyles),
+    richTexts: createComposeRichTextState(source.richTexts),
+    fixedLayout: createComposeFixedLayoutState(source.fixedLayout, source.templateId || DEFAULT_COMPOSE_TEMPLATE),
     fixedTags: Array.isArray(source.fixedTags) ? [...source.fixedTags] : [],
     freeTags: Array.isArray(source.freeTags)
       ? [...source.freeTags]
@@ -403,6 +506,8 @@ function navigate(screen) {
     uiState.composeStage = 'select';
     uiState.composeBackgroundColor = '#f8f4ee';
     uiState.composeWorkingDraft = null;
+    uiState.composePreparedImageData = null;
+    uiState.composePreparedImageDirty = true;
     uiState.composeReturnState = null;
   }
   uiState.screen = screen;
@@ -413,6 +518,8 @@ function navigate(screen) {
     uiState.composeBackgroundColor = '#f8f4ee';
     uiState.composeTemplateId = DEFAULT_COMPOSE_TEMPLATE;
     uiState.composeDraftId = null;
+    uiState.composePreparedImageData = null;
+    uiState.composePreparedImageDirty = true;
     uiState.composeWorkingDraft = createComposeWorkingDraft({
       templateId: DEFAULT_COMPOSE_TEMPLATE,
       backgroundColor: '#f8f4ee',
@@ -488,6 +595,8 @@ function openPostEdit(postId) {
   uiState.composeEditingPostId = postId;
   uiState.composeDraftId = null;
   uiState.composeStage = 'edit';
+  uiState.composePreparedImageData = post.imageData || null;
+  uiState.composePreparedImageDirty = false;
   uiState.composeTemplateId = post.composeData?.templateId || DEFAULT_COMPOSE_TEMPLATE;
   uiState.composeBackgroundColor = post.composeData?.backgroundColor || '#f8f4ee';
   uiState.composeWorkingDraft = createComposeWorkingDraft(post.composeData || {});
@@ -542,6 +651,7 @@ function persistComposeDraftOnExit() {
   const savedDraft = upsertDraft({
     id: uiState.composeDraftId || undefined,
     title: buildComposeCaption(draft) || draft.headline || 'Untitled',
+    imageData: uiState.composePreparedImageData || '',
     composeData: createComposeWorkingDraft(draft),
   });
   uiState.composeDraftId = savedDraft.id;
@@ -554,6 +664,8 @@ function openComposeDraft(draftId) {
   uiState.composeEditingPostId = null;
   uiState.composeDraftId = draft.id;
   uiState.composeStage = 'edit';
+  uiState.composePreparedImageData = draft.imageData || null;
+  uiState.composePreparedImageDirty = !draft.imageData;
   uiState.composeTemplateId = draft.composeData.templateId || DEFAULT_COMPOSE_TEMPLATE;
   uiState.composeBackgroundColor = draft.composeData.backgroundColor || '#f8f4ee';
   uiState.composeWorkingDraft = createComposeWorkingDraft(draft.composeData);
@@ -565,7 +677,7 @@ function openComposeDraft(draftId) {
 
 async function publishComposeDraft(draftId) {
   const draft = getState().drafts.find((item) => item.id === draftId);
-  if (!draft?.composeData) return;
+  if (!draft?.composeData || !draft.imageData) return;
   const draftSnapshot = createComposeWorkingDraft(draft.composeData);
   const values = {
     templateId: draftSnapshot.templateId,
@@ -578,9 +690,10 @@ async function publishComposeDraft(draftId) {
     date: draftSnapshot.date,
     editor: draftSnapshot.editor,
     textStyles: draftSnapshot.textStyles,
+    fixedLayout: draftSnapshot.fixedLayout,
     customLayout: draftSnapshot.customLayout,
   };
-  const imageData = await renderComposeTemplate(values, draftSnapshot.standardFiles, {});
+  const imageData = draft.imageData;
   const profileName = String(getState().profile?.name || 'you').trim() || 'you';
 
   addPost({
@@ -600,6 +713,8 @@ async function publishComposeDraft(draftId) {
   uiState.composeDraftId = null;
   uiState.composeWorkingDraft = null;
   uiState.composeEditingPostId = null;
+  uiState.composePreparedImageData = null;
+  uiState.composePreparedImageDirty = true;
   uiState.screen = 'timeline';
   uiState.timelineTab = 'recommended';
   uiState.profileSection = 'pages';
@@ -612,6 +727,8 @@ function closeCompose() {
   uiState.composeReturnState = null;
   uiState.composeDraftId = null;
   uiState.composeWorkingDraft = null;
+  uiState.composePreparedImageData = null;
+  uiState.composePreparedImageDirty = true;
   restoreViewState(snapshot, 'home');
 }
 
@@ -799,7 +916,7 @@ async function bindOpeningEvents() {
 
   const assetTask = Promise.all([
     loadOpeningImage('image/background/okinawa.png'),
-    loadOpeningImage('image/logo/b439a9c7-433e-4123-91c2-7d9eb952c1b4.png'),
+    loadOpeningImage('image/logo/BURN＿white.png'),
   ]).catch(() => [null, null]);
 
   try {
@@ -1410,6 +1527,70 @@ function bindPostInteractions(scope = document) {
   }
 }
 
+function bindDragScrollSurface(element, axis = 'y') {
+  if (!element || element.dataset.dragScrollBound === 'true') return;
+  element.dataset.dragScrollBound = 'true';
+  let dragState = null;
+  let suppressClick = false;
+
+  element.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    dragState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: element.scrollLeft,
+      scrollTop: element.scrollTop,
+      moved: false,
+    };
+    element.setPointerCapture?.(event.pointerId);
+  });
+
+  element.addEventListener('pointermove', (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    const primaryDelta = axis === 'x' ? deltaX : deltaY;
+    if (!dragState.moved && Math.abs(primaryDelta) < 4) return;
+    dragState.moved = true;
+    event.preventDefault();
+    if (axis === 'x') {
+      element.scrollLeft = dragState.scrollLeft - deltaX;
+    } else {
+      element.scrollTop = dragState.scrollTop - deltaY;
+    }
+  });
+
+  const finishDrag = (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    suppressClick = dragState.moved;
+    dragState = null;
+    element.releasePointerCapture?.(event.pointerId);
+    if (suppressClick) {
+      window.setTimeout(() => {
+        suppressClick = false;
+      }, 180);
+    }
+  };
+
+  element.addEventListener('pointerup', finishDrag);
+  element.addEventListener('pointercancel', finishDrag);
+  element.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+}
+
+function bindScreenScrollSurfaces() {
+  [
+    document.querySelector('.timeline-feed'),
+    document.querySelector('.screen-area--profile'),
+    document.querySelector('.screen-area--search'),
+    document.querySelector('.screen-area--post'),
+  ].forEach((element) => bindDragScrollSurface(element, 'y'));
+}
+
 function bindHomeEvents() {
   const homeRoot = document.querySelector('.orbit-home');
   const syncHomeCoreState = () => {
@@ -1454,6 +1635,7 @@ function bindHomeEvents() {
 
 function bindTimelineEvents() {
   bindPostInteractions(document.getElementById('screenArea'));
+  bindScreenScrollSurfaces();
 
   const viewport = document.querySelector('[data-timeline-pan-viewport]');
   const surface = document.querySelector('[data-timeline-pan-surface]');
@@ -1525,6 +1707,7 @@ function bindTimelineEvents() {
 
 function bindSearchEvents() {
   bindPostInteractions(document.getElementById('screenArea'));
+  bindScreenScrollSurfaces();
 
   const input = document.getElementById('searchInput');
   if (input) {
@@ -1648,7 +1831,7 @@ function buildComposeCaption(values) {
       .join(' / ')
       .slice(0, 120);
   }
-  return [values.headline, values.subhead, values.intro, values.body]
+  return [values.headline, values.subhead, values.text, values.text2, values.text3, values.intro, values.body]
     .map((value) => value.trim())
     .filter(Boolean)
     .join(' / ')
@@ -1664,6 +1847,7 @@ function addWrappedText(ctx, text, options) {
     maxLines,
     align = 'left',
     exclusions = [],
+    letterSpacing = 0,
   } = options;
 
   const baseLeft = align === 'center' ? x - (maxWidth / 2) : x;
@@ -1720,12 +1904,32 @@ function addWrappedText(ctx, text, options) {
     return [...slots].sort((a, b) => a.left - b.left)[0];
   }
 
+  function measureLineText(value) {
+    const textValue = String(value || '');
+    const baseWidth = ctx.measureText(textValue).width;
+    return baseWidth + Math.max(0, textValue.length - 1) * Math.max(0, Number(letterSpacing) || 0);
+  }
+
+  function drawLineText(value, drawX, drawY) {
+    const textValue = String(value || '');
+    const spacing = Math.max(0, Number(letterSpacing) || 0);
+    if (!spacing || textValue.length <= 1) {
+      ctx.fillText(textValue, drawX, drawY);
+      return;
+    }
+    let cursorX = drawX;
+    Array.from(textValue).forEach((char) => {
+      ctx.fillText(char, cursorX, drawY);
+      cursorX += ctx.measureText(char).width + spacing;
+    });
+  }
+
   function fitUnitsIntoWidth(units, startIndex, separator, width) {
     let current = '';
     let index = startIndex;
     while (index < units.length) {
       const candidate = current ? `${current}${separator}${units[index]}` : units[index];
-      if (ctx.measureText(candidate).width <= width || !current) {
+      if (measureLineText(candidate) <= width || !current) {
         current = candidate;
         index += 1;
         continue;
@@ -1760,7 +1964,7 @@ function addWrappedText(ctx, text, options) {
       const lineTop = y + (lineIndex * lineHeight);
       const slot = chooseSlot(lineSlots(lineTop)) || { left: baseLeft, right: baseRight };
       const fitted = fitUnitsIntoWidth(units, cursor, separator, Math.max(8, slot.right - slot.left));
-      const lineWidth = ctx.measureText(fitted.text).width;
+      const lineWidth = measureLineText(fitted.text);
       const lineX = align === 'center'
         ? slot.left + Math.max(0, ((slot.right - slot.left - lineWidth) / 2))
         : align === 'right'
@@ -1775,7 +1979,7 @@ function addWrappedText(ctx, text, options) {
   });
 
   lines.slice(0, maxLines).forEach((line, index) => {
-    ctx.fillText(line.text, line.x, y + index * lineHeight);
+    drawLineText(line.text, line.x, y + index * lineHeight);
   });
 }
 
@@ -1885,6 +2089,7 @@ function drawSlotPlaceholder(ctx, rect) {
 }
 
 async function renderComposeTemplate(values, files, extra = {}) {
+  await waitForComposeFonts(values);
   const designWidth = 1240;
   const designHeight = 1754;
   const width = 2480;
@@ -1912,14 +2117,214 @@ async function renderComposeTemplate(values, files, extra = {}) {
     drawSlotPlaceholder,
     defaults: composePreviewDefaults,
     getTextFontStack(fieldKey, fallbackStack) {
-      const style = createComposeTextStyleValue(values.textStyles?.[fieldKey]);
-      return style.family && COMPOSE_TEXT_FONT_STACKS[style.family]
-        ? COMPOSE_TEXT_FONT_STACKS[style.family]
-        : fallbackStack;
+      return fallbackStack;
+    },
+    getTextScale(fieldKey) {
+      const fixedTextRenderScale = Number.isFinite(Number(extra.fixedTextRenderScale))
+        ? Math.max(1, Number(extra.fixedTextRenderScale))
+        : 1;
+      const textScale = createComposeTextStyleValue(values.textStyles?.[fieldKey]).scale;
+      return textScale * textScale * fixedTextRenderScale;
     },
     page8Files: extra.page8Files || {},
   });
 
+  return canvas.toDataURL('image/png');
+}
+
+function composeDataUrlToBlobUrl(dataUrl) {
+  const [meta, data] = String(dataUrl || '').split(',');
+  if (!meta || !data) return '';
+  const mime = meta.match(/^data:([^;]+);base64$/)?.[1] || 'image/png';
+  const binary = window.atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: mime }));
+}
+
+async function resourceUrlToDataUrl(url) {
+  if (!url || url.startsWith('data:')) return url;
+  try {
+    const absoluteUrl = new URL(url, document.baseURI).href;
+    const response = await fetch(absoluteUrl);
+    if (!response.ok) return url;
+    const blob = await response.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || url));
+      reader.onerror = () => resolve(url);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return url;
+  }
+}
+
+async function inlineCssUrls(cssText = '') {
+  const source = String(cssText || '');
+  const matches = [...source.matchAll(/url\((["']?)(.*?)\1\)/g)]
+    .map((match) => match[2])
+    .filter(Boolean);
+  if (!matches.length) return source;
+
+  let nextCss = source;
+  const uniqueUrls = [...new Set(matches)];
+  for (const rawUrl of uniqueUrls) {
+    const trimmedUrl = rawUrl.trim();
+    if (!trimmedUrl || trimmedUrl.startsWith('data:')) continue;
+    const dataUrl = await resourceUrlToDataUrl(trimmedUrl);
+    const replacement = dataUrl && dataUrl.startsWith('data:')
+      ? `url(${dataUrl})`
+      : 'none';
+    nextCss = nextCss.replaceAll(`url("${rawUrl}")`, replacement);
+    nextCss = nextCss.replaceAll(`url('${rawUrl}')`, replacement);
+    nextCss = nextCss.replaceAll(`url(${rawUrl})`, replacement);
+  }
+  return nextCss;
+}
+
+async function inlineCloneResources(element) {
+  if (!(element instanceof Element)) return;
+  if (element instanceof HTMLImageElement && element.src) {
+    const dataUrl = await resourceUrlToDataUrl(element.src);
+    if (dataUrl?.startsWith('data:')) {
+      element.src = dataUrl;
+    } else {
+      element.removeAttribute('src');
+    }
+  }
+  const styleAttribute = element.getAttribute('style');
+  if (styleAttribute) {
+    element.setAttribute('style', await inlineCssUrls(styleAttribute));
+  }
+  await Promise.all(Array.from(element.children).map((child) => inlineCloneResources(child)));
+}
+
+function sanitizeSerializedCapture(serialized) {
+  const normalizeSerializedUrl = (value) => String(value || '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/^&quot;|&quot;$/g, '')
+    .replace(/^&#34;|&#34;$/g, '')
+    .replace(/^&#39;|&#39;$/g, '');
+
+  return String(serialized || '')
+    .replace(/url\((.*?)\)/g, (match, value) => {
+      const normalized = normalizeSerializedUrl(value);
+      return normalized.startsWith('data:') ? match : 'none';
+    })
+    .replace(/\s(?:src|href|xlink:href)=(["'])(.*?)\1/g, (match, quote, value) => {
+      const normalized = normalizeSerializedUrl(value);
+      return normalized.startsWith('data:') || normalized.startsWith('#') ? match : '';
+    });
+}
+
+function inlineComputedStyles(source, target) {
+  if (!(source instanceof Element) || !(target instanceof Element)) return;
+  const computed = window.getComputedStyle(source);
+  const cssText = Array.from(computed)
+    .map((property) => `${property}:${computed.getPropertyValue(property)};`)
+    .join('');
+  target.setAttribute('style', `${cssText}${target.getAttribute('style') || ''}`);
+  Array.from(source.children).forEach((child, index) => {
+    inlineComputedStyles(child, target.children[index]);
+  });
+}
+
+function removeComposeCaptureChrome(clone) {
+  clone.querySelectorAll('.compose-editable').forEach((element) => {
+    element.classList.remove('is-active');
+    element.style.boxShadow = 'none';
+    element.style.background = 'transparent';
+    element.style.outline = '0';
+    element.style.caretColor = 'transparent';
+  });
+
+  clone.querySelectorAll('.compose-custom-item').forEach((element) => {
+    element.classList.remove('is-selected');
+    element.style.boxShadow = 'none';
+    element.style.outline = '0';
+  });
+
+  clone.querySelectorAll([
+    '.compose-custom-item__drag',
+    '.compose-custom-item__remove',
+    '.compose-custom-item__resize',
+    '.compose-fixed-resize',
+  ].join(',')).forEach((element) => {
+    element.remove();
+  });
+}
+
+async function prepareComposeCaptureClone(sourceFrame) {
+  const clone = sourceFrame.cloneNode(true);
+  inlineComputedStyles(sourceFrame, clone);
+  removeComposeCaptureChrome(clone);
+  clone.querySelectorAll([
+    'input',
+    'button',
+    '.compose-fixed-resize',
+    '.compose-slot__remove',
+    '.compose-slot__placeholder',
+    '[data-compose-shape-mask][hidden]',
+  ].join(',')).forEach((element) => {
+    element.remove();
+  });
+  clone.querySelectorAll('[contenteditable]').forEach((element) => {
+    element.removeAttribute('contenteditable');
+  });
+  clone.querySelectorAll('[hidden]').forEach((element) => {
+    element.remove();
+  });
+  await inlineCloneResources(clone);
+  return clone;
+}
+
+async function captureComposeFrameToDataUrl(sourceFrame) {
+  if (!sourceFrame) return '';
+  if (document.fonts?.ready) {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise((resolve) => window.setTimeout(resolve, 1000)),
+    ]);
+  }
+  const frameRect = sourceFrame.getBoundingClientRect();
+  if (!frameRect.width || !frameRect.height) return '';
+  const width = 2480;
+  const height = Math.round(width * (frameRect.height / frameRect.width));
+  const clone = await prepareComposeCaptureClone(sourceFrame);
+  const sheetElement = sourceFrame.closest('.compose-sheet');
+  const sheetBackground = sheetElement ? window.getComputedStyle(sheetElement).backgroundColor : '';
+  if (sheetBackground && sheetBackground !== 'rgba(0, 0, 0, 0)' && sheetBackground !== 'transparent') {
+    clone.style.backgroundColor = sheetBackground;
+  }
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  clone.style.width = `${frameRect.width}px`;
+  clone.style.height = `${frameRect.height}px`;
+
+  const serialized = sanitizeSerializedCapture(new XMLSerializer().serializeToString(clone));
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${frameRect.width} ${frameRect.height}">
+      <foreignObject width="100%" height="100%">${serialized}</foreignObject>
+    </svg>
+  `;
+  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  const loaded = new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = reject;
+  });
+  image.src = svgUrl;
+  await loaded;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.drawImage(image, 0, 0, width, height);
   return canvas.toDataURL('image/png');
 }
 
@@ -1957,6 +2362,10 @@ function bindComposeEvents() {
   const customInspector = document.querySelector('[data-custom-inspector]');
   const pretextComposeHost = document.querySelector('[data-compose-pretext-host]');
   const editables = Array.from(document.querySelectorAll('[data-editable]'));
+  let fixedLayoutState = createComposeFixedLayoutState(
+    composeDraft?.fixedLayout,
+    composeDraft?.templateId || uiState.composeTemplateId || DEFAULT_COMPOSE_TEMPLATE,
+  );
   const customLayoutState = {
     options: normalizePage8Options(composeDraft?.customLayout || {}),
     imageBoxes: normalizePage8ImageBoxes(composeDraft?.customLayout || {}),
@@ -1969,6 +2378,8 @@ function bindComposeEvents() {
     text: document.querySelector('[data-editable="text"]'),
     headline: document.querySelector('[data-editable="headline"]'),
     subhead: document.querySelector('[data-editable="subhead"]'),
+    text2: document.querySelector('[data-editable="text2"]'),
+    text3: document.querySelector('[data-editable="text3"]'),
     intro: document.querySelector('[data-editable="intro"]'),
     body: document.querySelector('[data-editable="body"]'),
     date: document.querySelector('[data-editable="date"]'),
@@ -1990,16 +2401,22 @@ function bindComposeEvents() {
   const textTraySizeInput = textTray?.querySelector('[data-compose-text-size]') || null;
   const textTraySizeStepButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-size-step]') || []);
   const textTrayFontButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-font]') || []);
+  const textTrayAlignButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-align]') || []);
   const textTrayLevelButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-tray-level]') || []);
   let activeFixedTextKey = null;
   let textTrayOpenLevel = 100;
   let textTrayDragState = null;
   let textTrayJustDragged = false;
+  let pendingComposeDownloadUrl = '';
+  let suppressComposeImageDirty = false;
+  let savedTextSelectionRange = null;
 
   const composeTextLabels = {
     text: 'Text',
     headline: 'Text',
     subhead: 'Subhead',
+    text2: 'Text',
+    text3: 'Text',
     intro: 'Notes',
     body: 'Body',
     date: 'Date',
@@ -2015,7 +2432,19 @@ function bindComposeEvents() {
     };
   }
 
+  function markComposeImageDirty() {
+    uiState.composePreparedImageDirty = true;
+    uiState.composePreparedImageData = null;
+  }
+
+  function isVisualComposePartial(partial = {}) {
+    return Object.keys(partial).some((key) => !['fixedTags', 'freeTags'].includes(key));
+  }
+
   function persistComposeDraft(partial = {}) {
+    if (!suppressComposeImageDirty && composeStage === 'edit' && isVisualComposePartial(partial)) {
+      markComposeImageDirty();
+    }
     const nextDraft = createComposeWorkingDraft({
       ...(uiState.composeWorkingDraft || composeDraft || {}),
       ...partial,
@@ -2026,10 +2455,122 @@ function bindComposeEvents() {
     return nextDraft;
   }
 
+  function clearPendingComposeDownload() {
+    const existingLink = composePage.querySelector('[data-download-compose-image]');
+    existingLink?.remove();
+    if (pendingComposeDownloadUrl) {
+      URL.revokeObjectURL(pendingComposeDownloadUrl);
+      pendingComposeDownloadUrl = '';
+    }
+  }
+
+  function showComposeDownloadLink(saveButton, imageData) {
+    clearPendingComposeDownload();
+    const blobUrl = composeDataUrlToBlobUrl(imageData);
+    if (!blobUrl) return;
+    const stamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+    pendingComposeDownloadUrl = blobUrl;
+    const downloadLink = document.createElement('a');
+    downloadLink.className = 'button button--primary compose-download-image-button compose-download-image-button--header';
+    downloadLink.href = blobUrl;
+    downloadLink.download = `burn-page-${stamp}.png`;
+    downloadLink.textContent = 'Download';
+    downloadLink.dataset.downloadComposeImage = 'true';
+    saveButton.insertAdjacentElement('afterend', downloadLink);
+  }
+
+  function persistEditableDraftValue(element) {
+    if (!element || element.style.display === 'none') return;
+    const fieldKey = element.dataset.editable;
+    if (!fieldKey) return;
+    const value = getEditableText(element).trim();
+    const currentDraft = uiState.composeWorkingDraft || composeDraft || {};
+    const richTexts = {
+      ...(currentDraft.richTexts || {}),
+      [fieldKey]: getEditableRichTextHtml(element),
+    };
+    const partial = { [fieldKey]: value, richTexts };
+    if (fieldKey === 'text') {
+      partial.headline = value;
+      richTexts.headline = richTexts.text;
+    }
+    persistComposeDraft(partial);
+  }
+
   function getComposeTextStyleValue(fieldKey) {
     return createComposeTextStyleValue(
       (uiState.composeWorkingDraft || composeDraft || {}).textStyles?.[fieldKey],
     );
+  }
+
+  function ensureFixedLayoutState(templateId) {
+    if (fixedLayoutState.templateId !== templateId) {
+      fixedLayoutState = createComposeFixedLayoutState(null, templateId);
+    }
+    return fixedLayoutState;
+  }
+
+  function persistFixedLayoutState() {
+    persistComposeDraft({
+      fixedLayout: createComposeFixedLayoutState(fixedLayoutState, fixedLayoutState.templateId),
+    });
+  }
+
+  function fixedResizeMinimums(type) {
+    return type === 'image'
+      ? { width: 0.06, height: 0.06 }
+      : { width: 0.08, height: 0.025 };
+  }
+
+  function clampFixedRect(rect, type) {
+    const minimums = fixedResizeMinimums(type);
+    const width = Math.min(1, Math.max(minimums.width, Number(rect.width) || minimums.width));
+    const height = Math.min(1, Math.max(minimums.height, Number(rect.height) || minimums.height));
+    return {
+      x: Math.min(1 - width, Math.max(0, Number(rect.x) || 0)),
+      y: Math.min(1 - height, Math.max(0, Number(rect.y) || 0)),
+      width,
+      height,
+    };
+  }
+
+  function updateFixedLayoutRect(type, key, rect) {
+    const templateId = composeSheet?.dataset.template || uiState.composeTemplateId || DEFAULT_COMPOSE_TEMPLATE;
+    const state = ensureFixedLayoutState(templateId);
+    const bucket = type === 'image' ? state.images : state.texts;
+    bucket[key] = clampFixedRect(rect, type);
+    persistFixedLayoutState();
+  }
+
+  function getFixedTextAlign(fieldKey) {
+    const templateId = composeSheet?.dataset.template || uiState.composeTemplateId || DEFAULT_COMPOSE_TEMPLATE;
+    const layoutState = ensureFixedLayoutState(templateId);
+    const overrideAlign = layoutState.texts?.[fieldKey]?.align;
+    if (['left', 'center', 'right'].includes(overrideAlign)) {
+      return overrideAlign;
+    }
+    const layout = getFixedTemplateLayout(templateId, layoutState);
+    const blockAlign = layout?.texts.find((block) => block.fieldKey === fieldKey)?.align;
+    return ['left', 'center', 'right'].includes(blockAlign) ? blockAlign : 'left';
+  }
+
+  function updateFixedTextAlign(fieldKey, align) {
+    if (!fieldKey || !['left', 'center', 'right'].includes(align)) return;
+    const templateId = composeSheet?.dataset.template || uiState.composeTemplateId || DEFAULT_COMPOSE_TEMPLATE;
+    const state = ensureFixedLayoutState(templateId);
+    const layout = getFixedTemplateLayout(templateId, state);
+    const block = layout?.texts.find((item) => item.fieldKey === fieldKey) || {};
+    const current = state.texts[fieldKey] || {};
+    state.texts[fieldKey] = {
+      x: Number.isFinite(Number(current.x)) ? current.x : block.x,
+      y: Number.isFinite(Number(current.y)) ? current.y : block.y,
+      width: Number.isFinite(Number(current.width)) ? current.width : block.width,
+      height: Number.isFinite(Number(current.height)) ? current.height : block.height,
+      align,
+    };
+    persistFixedLayoutState();
+    applyFixedTemplateLayout(templateId);
+    syncComposeTextTray();
   }
 
   function applyComposeTextStyle(fieldKey) {
@@ -2051,13 +2592,8 @@ function bindComposeEvents() {
     if (Number.isFinite(baseLineHeight)) {
       target.style.lineHeight = `${baseLineHeight * style.scale}px`;
     }
-    if (style.family && COMPOSE_TEXT_FONT_STACKS[style.family]) {
-      target.style.setProperty('--compose-font-stack', COMPOSE_TEXT_FONT_STACKS[style.family]);
-      target.style.fontFamily = COMPOSE_TEXT_FONT_STACKS[style.family];
-    } else {
-      target.style.removeProperty('--compose-font-stack');
-      target.style.removeProperty('font-family');
-    }
+    target.style.removeProperty('--compose-font-stack');
+    target.style.removeProperty('font-family');
   }
 
   function applyComposeTextStyles() {
@@ -2067,17 +2603,23 @@ function bindComposeEvents() {
   function syncComposeTextTray() {
     if (!textTray || !activeFixedTextKey) return;
     const style = getComposeTextStyleValue(activeFixedTextKey);
+    const activeSizeScale = getSelectedTextSizeScale() || style.scale;
     if (textTrayTarget) {
       textTrayTarget.textContent = composeTextLabels[activeFixedTextKey] || 'Text';
     }
     if (textTraySizeValue) {
-      textTraySizeValue.textContent = `${Math.round(style.scale * 50)}%`;
+      textTraySizeValue.textContent = `${Math.round(activeSizeScale * 50)}%`;
     }
     if (textTraySizeInput) {
-      textTraySizeInput.value = String(Math.round(style.scale * 50));
+      textTraySizeInput.value = String(Math.round(activeSizeScale * 50));
     }
+    const selectedFontId = getSelectedTextFontId();
     textTrayFontButtons.forEach((button) => {
-      button.classList.toggle('is-active', button.dataset.composeTextFont === style.family);
+      button.classList.toggle('is-active', Boolean(selectedFontId) && button.dataset.composeTextFont === selectedFontId);
+    });
+    const align = getFixedTextAlign(activeFixedTextKey);
+    textTrayAlignButtons.forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.composeTextAlign === align);
     });
   }
 
@@ -2176,6 +2718,47 @@ function bindComposeEvents() {
     }
   }
 
+  function getEventElement(target) {
+    if (target instanceof Element) return target;
+    return target?.parentElement || null;
+  }
+
+  function closestFromEventTarget(target, selector) {
+    return getEventElement(target)?.closest(selector) || null;
+  }
+
+  function findFixedEditableAtPoint(clientX, clientY) {
+    if (composeSheet?.dataset.template === 'page8') return null;
+    return editables
+      .filter((element) => {
+        if (!element || element.style.display === 'none') return false;
+        if (element.getAttribute('contenteditable') !== 'true') return false;
+        const rect = element.getBoundingClientRect();
+        return clientX >= rect.left
+          && clientX <= rect.right
+          && clientY >= rect.top
+          && clientY <= rect.bottom;
+      })
+      .sort((first, second) => {
+        const firstIndex = Number.parseInt(window.getComputedStyle(first).zIndex, 10) || 0;
+        const secondIndex = Number.parseInt(window.getComputedStyle(second).zIndex, 10) || 0;
+        return secondIndex - firstIndex;
+      })[0] || null;
+  }
+
+  function focusFixedEditableFromPoint(event) {
+    if (composePage?.classList.contains('is-preview-mode')) return;
+    if (closestFromEventTarget(event.target, '[data-editable], [data-fixed-resize]')) return;
+    const target = findFixedEditableAtPoint(event.clientX, event.clientY);
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const fieldKey = target.dataset.editable;
+    target.focus({ preventScroll: true });
+    placeCaretAtEnd(target);
+    openComposeTextTray(fieldKey);
+  }
+
   function updateComposeTextStyle(partial = {}) {
     if (!activeFixedTextKey) return;
     const currentDraft = uiState.composeWorkingDraft || composeDraft || {};
@@ -2189,16 +2772,21 @@ function bindComposeEvents() {
         [activeFixedTextKey]: createComposeTextStyleValue(nextStyle),
       },
     });
-    applyComposeTextStyle(activeFixedTextKey);
-    const target = editableKeyMap[activeFixedTextKey];
-    if (target) {
-      clampEditable(target);
+    if (composeSheet?.dataset.template && composeSheet.dataset.template !== 'page8') {
+      applyFixedTemplateLayout(composeSheet.dataset.template);
+    } else {
+      applyComposeTextStyle(activeFixedTextKey);
+      const target = editableKeyMap[activeFixedTextKey];
+      if (target) {
+        clampEditable(target);
+      }
     }
     syncComposeTextTray();
   }
 
   function buildComposeDraftSnapshot(options = {}) {
     const { customLayoutOverride } = options;
+    syncVisibleComposeEditables();
     const checkedTemplate = composeRoot.querySelector('input[name="templateId"]:checked');
     const checkedBackground = composeRoot.querySelector('input[name="backgroundColor"]:checked');
     const currentTemplateId = String(
@@ -2245,23 +2833,39 @@ function bindComposeEvents() {
     const editableTextValue = getEditableValue('text');
     const editableHeadlineValue = getEditableValue('headline');
     const headlineValue = editableTextValue || editableHeadlineValue || baseDraft.headline;
+    const richTexts = getComposeRichTextSnapshot(baseDraft.richTexts);
+    if (richTexts.text) {
+      richTexts.headline = richTexts.text;
+    }
 
     return persistComposeDraft({
       fixedTags,
       freeTags,
+      fixedLayout: createComposeFixedLayoutState(fixedLayoutState, currentTemplateId),
       text: editableTextValue || baseDraft.text || headlineValue,
       headline: headlineValue,
       subhead: getEditableValue('subhead') || baseDraft.subhead,
+      text2: getEditableValue('text2') || baseDraft.text2,
+      text3: getEditableValue('text3') || baseDraft.text3,
       intro: getEditableValue('intro') || baseDraft.intro,
       body: getEditableValue('body') || baseDraft.body,
       date: getEditableValue('date') || baseDraft.date,
       editor: getEditableValue('editor') || baseDraft.editor,
+      richTexts,
       customLayout: customLayoutOverride ?? null,
     });
   }
 
-  const switchComposeStage = (nextStage) => {
-    buildComposeDraftSnapshot();
+  const switchComposeStage = async (nextStage) => {
+    const draftSnapshot = await finalizeComposeDraftSnapshot();
+    if (nextStage === 'tags' && composeStage === 'edit') {
+      const values = buildComposeRenderValues(draftSnapshot);
+      const imageData = await prepareComposeImageData(draftSnapshot, values);
+      if (!imageData) return;
+    } else if (nextStage === 'edit') {
+      uiState.composePreparedImageData = null;
+      uiState.composePreparedImageDirty = true;
+    }
     uiState.composeStage = nextStage;
     render();
   };
@@ -2301,6 +2905,68 @@ function bindComposeEvents() {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function sanitizeComposeRichTextMarkup(markup = '') {
+    if (!markup) return '';
+    const template = document.createElement('template');
+    template.innerHTML = String(markup);
+    const output = document.createElement('div');
+
+    const appendSafeNode = (sourceNode, targetParent) => {
+      if (sourceNode.nodeType === Node.TEXT_NODE) {
+        targetParent.append(document.createTextNode(sourceNode.textContent || ''));
+        return;
+      }
+      if (sourceNode.nodeType !== Node.ELEMENT_NODE) return;
+
+      const element = sourceNode;
+      if (element.tagName === 'BR') {
+        targetParent.append(document.createElement('br'));
+        return;
+      }
+
+      if (element.tagName === 'SPAN') {
+        const fontId = element.dataset.composeFontId;
+        const sizeScale = normalizeComposeRichTextSizeScale(element.dataset.composeTextSizeScale);
+        if ((fontId && COMPOSE_TEXT_FONT_STACKS[fontId]) || sizeScale) {
+          const span = document.createElement('span');
+          const classNames = [];
+          if (fontId && COMPOSE_TEXT_FONT_STACKS[fontId]) {
+            classNames.push('compose-rich-font');
+            span.dataset.composeFontId = fontId;
+            span.style.fontFamily = COMPOSE_TEXT_FONT_STACKS[fontId];
+          }
+          if (sizeScale) {
+            classNames.push('compose-rich-size');
+            span.dataset.composeTextSizeScale = String(sizeScale);
+            span.style.fontSize = `${sizeScale}em`;
+          }
+          span.className = classNames.join(' ');
+          Array.from(element.childNodes).forEach((child) => appendSafeNode(child, span));
+          targetParent.append(span);
+          return;
+        }
+      }
+
+      if (element.tagName === 'DIV' || element.tagName === 'P') {
+        if (targetParent.childNodes.length) {
+          targetParent.append(document.createElement('br'));
+        }
+        Array.from(element.childNodes).forEach((child) => appendSafeNode(child, targetParent));
+        return;
+      }
+
+      Array.from(element.childNodes).forEach((child) => appendSafeNode(child, targetParent));
+    };
+
+    Array.from(template.content.childNodes).forEach((child) => appendSafeNode(child, output));
+    return output.innerHTML;
+  }
+
+  function getEditableRichTextHtml(element) {
+    if (!element || isPage7ConstrainedEditable(element)) return '';
+    return sanitizeComposeRichTextMarkup(element.innerHTML || '');
   }
 
   function createCustomId(prefix) {
@@ -2374,10 +3040,11 @@ function bindComposeEvents() {
 
   function normalizeEditableContent(element) {
     if (element.dataset.singleLine === 'true') {
-      element.innerText = element.innerText.replace(/\r?\n+/g, ' ');
+      element.innerHTML = sanitizeComposeRichTextMarkup(element.innerHTML || '')
+        .replace(/<br\s*\/?>/gi, ' ');
       return;
     }
-    element.innerHTML = element.innerHTML
+    element.innerHTML = sanitizeComposeRichTextMarkup(element.innerHTML || '')
       .replace(/<div><br><\/div>/gi, '<br>')
       .replace(/<div>/gi, '<br>')
       .replace(/<\/div>/gi, '')
@@ -2441,7 +3108,7 @@ function bindComposeEvents() {
   }
 
   function getPage7RawText(element) {
-    return normalizeEditableValue(element, element.innerText).replace(/\n+/g, '');
+    return normalizeEditableValue(element, element.dataset.page7RawText || element.textContent || '').replace(/\n+/g, '');
   }
 
   function measurePage7TextWidth(element, value) {
@@ -2622,7 +3289,7 @@ function bindComposeEvents() {
     if (isPage7ConstrainedEditable(element)) {
       return getPage7RawText(element);
     }
-    return normalizeEditableValue(element, element.innerText);
+    return normalizeEditableValue(element, element.textContent || '');
   }
 
   function placeCaretAtEnd(element) {
@@ -2650,6 +3317,272 @@ function bindComposeEvents() {
     if (!selection || selection.rangeCount === 0) return false;
     const range = selection.getRangeAt(0);
     return element.contains(range.startContainer) && element.contains(range.endContainer);
+  }
+
+  function getCaretRangeFromPoint(element, clientX, clientY) {
+    if (!element) return null;
+    let range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(clientX, clientY);
+    } else if (document.caretPositionFromPoint) {
+      const position = document.caretPositionFromPoint(clientX, clientY);
+      if (position) {
+        range = document.createRange();
+        range.setStart(position.offsetNode, position.offset);
+        range.collapse(true);
+      }
+    }
+    if (!range || !element.contains(range.startContainer)) {
+      const fallbackRange = document.createRange();
+      fallbackRange.selectNodeContents(element);
+      fallbackRange.collapse(false);
+      return fallbackRange;
+    }
+    return range;
+  }
+
+  function getTextBoundaryRangeFromPoint(element, clientX, clientY) {
+    if (!element) return null;
+    const textNodes = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (node.textContent?.length) {
+        textNodes.push(node);
+      }
+      node = walker.nextNode();
+    }
+    if (!textNodes.length) {
+      return getCaretRangeFromPoint(element, clientX, clientY);
+    }
+
+    let best = null;
+    textNodes.forEach((textNode) => {
+      const length = textNode.textContent.length;
+      for (let offset = 0; offset < length; offset += 1) {
+        const range = document.createRange();
+        range.setStart(textNode, offset);
+        range.setEnd(textNode, offset + 1);
+        const rects = Array.from(range.getClientRects());
+        range.detach?.();
+        rects.forEach((rect) => {
+          if (!rect.width && !rect.height) return;
+          const verticalDistance = clientY < rect.top
+            ? rect.top - clientY
+            : clientY > rect.bottom
+              ? clientY - rect.bottom
+              : 0;
+          const boundaryOffset = clientX <= rect.left + (rect.width / 2) ? offset : offset + 1;
+          const boundaryX = boundaryOffset === offset ? rect.left : rect.right;
+          const horizontalDistance = Math.abs(clientX - boundaryX);
+          const lineBias = Math.abs(clientY - (rect.top + rect.height / 2));
+          const score = (verticalDistance * 100000) + horizontalDistance + lineBias;
+          if (!best || score < best.score) {
+            best = {
+              node: textNode,
+              offset: boundaryOffset,
+              score,
+            };
+          }
+        });
+      }
+    });
+
+    if (!best) {
+      return getCaretRangeFromPoint(element, clientX, clientY);
+    }
+
+    const boundaryRange = document.createRange();
+    boundaryRange.setStart(best.node, best.offset);
+    boundaryRange.collapse(true);
+    return boundaryRange;
+  }
+
+  function createSelectionRangeBetween(startRange, endRange) {
+    if (!startRange || !endRange) return null;
+    const range = document.createRange();
+    const startsBeforeEnd = startRange.compareBoundaryPoints(Range.START_TO_START, endRange) <= 0;
+    if (startsBeforeEnd) {
+      range.setStart(startRange.startContainer, startRange.startOffset);
+      range.setEnd(endRange.startContainer, endRange.startOffset);
+    } else {
+      range.setStart(endRange.startContainer, endRange.startOffset);
+      range.setEnd(startRange.startContainer, startRange.startOffset);
+    }
+    return range;
+  }
+
+  function selectEditableRangeFromDrag(element, startRange, clientX, clientY) {
+    const endRange = getTextBoundaryRangeFromPoint(element, clientX, clientY);
+    const range = createSelectionRangeBetween(startRange, endRange);
+    const selection = window.getSelection();
+    if (!range || !selection) return false;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    savedTextSelectionRange = range.cloneRange();
+    syncComposeTextTray();
+    return true;
+  }
+
+  function rememberActiveTextSelection() {
+    if (!activeFixedTextKey) return;
+    const target = editableKeyMap[activeFixedTextKey];
+    const selection = window.getSelection();
+    if (!target || !selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!target.contains(range.startContainer) || !target.contains(range.endContainer)) return;
+    savedTextSelectionRange = range.cloneRange();
+  }
+
+  function restoreSavedTextSelection() {
+    if (!savedTextSelectionRange || !activeFixedTextKey) return false;
+    const target = editableKeyMap[activeFixedTextKey];
+    if (!target) return false;
+    const selection = window.getSelection();
+    if (!selection) return false;
+    target.focus({ preventScroll: true });
+    selection.removeAllRanges();
+    selection.addRange(savedTextSelectionRange);
+    return selectionIsWithin(target);
+  }
+
+  function getSelectedRichTextElement(selector) {
+    if (!activeFixedTextKey) return null;
+    const target = editableKeyMap[activeFixedTextKey];
+    const selection = window.getSelection();
+    if (!target || !selection || selection.rangeCount === 0 || !selectionIsWithin(target)) return null;
+    const range = selection.getRangeAt(0);
+    if (
+      range.startContainer === range.endContainer
+      && range.startContainer.nodeType === Node.ELEMENT_NODE
+      && range.endOffset === range.startOffset + 1
+    ) {
+      const selectedNode = range.startContainer.childNodes[range.startOffset];
+      if (selectedNode instanceof Element) {
+        return selectedNode.matches(selector) ? selectedNode : selectedNode.closest(selector);
+      }
+    }
+    const node = selection.anchorNode?.nodeType === Node.ELEMENT_NODE
+      ? selection.anchorNode
+      : selection.anchorNode?.parentElement;
+    return node?.closest?.(selector) || null;
+  }
+
+  function getSelectedTextFontId() {
+    const fontNode = getSelectedRichTextElement('[data-compose-font-id]');
+    const fontId = fontNode?.dataset.composeFontId || null;
+    return COMPOSE_TEXT_FONT_IDS.has(fontId) ? fontId : null;
+  }
+
+  function getSelectedTextSizeScale() {
+    const sizeNode = getSelectedRichTextElement('[data-compose-text-size-scale]');
+    return normalizeComposeRichTextSizeScale(sizeNode?.dataset.composeTextSizeScale);
+  }
+
+  function stripComposeFontSpans(root) {
+    root.querySelectorAll?.('[data-compose-font-id]').forEach((span) => {
+      span.replaceWith(...Array.from(span.childNodes));
+    });
+    return root;
+  }
+
+  function stripComposeSizeSpans(root) {
+    root.querySelectorAll?.('[data-compose-text-size-scale]').forEach((span) => {
+      span.replaceWith(...Array.from(span.childNodes));
+    });
+    return root;
+  }
+
+  function createComposeFontSpan(fontId, contents) {
+    const span = document.createElement('span');
+    span.className = 'compose-rich-font';
+    span.dataset.composeFontId = fontId;
+    span.style.fontFamily = COMPOSE_TEXT_FONT_STACKS[fontId];
+    span.append(stripComposeFontSpans(contents));
+    return span;
+  }
+
+  function createComposeSizeSpan(scale, contents) {
+    const normalizedScale = normalizeComposeRichTextSizeScale(scale);
+    if (!normalizedScale) return null;
+    const span = document.createElement('span');
+    span.className = 'compose-rich-size';
+    span.dataset.composeTextSizeScale = String(normalizedScale);
+    span.style.fontSize = `${normalizedScale}em`;
+    span.append(stripComposeSizeSpans(contents));
+    return span;
+  }
+
+  function getRestoredSelectedTextRange(target) {
+    if (!restoreSavedTextSelection()) return null;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !selectionIsWithin(target)) return null;
+    const range = selection.getRangeAt(0);
+    return range.collapsed || !selection.toString() ? null : range;
+  }
+
+  function applyFontToSelectedText(fontId) {
+    if (!activeFixedTextKey || !COMPOSE_TEXT_FONT_IDS.has(fontId)) return false;
+    const target = editableKeyMap[activeFixedTextKey];
+    if (!target) return false;
+    const selectedRange = getRestoredSelectedTextRange(target);
+    const fragment = document.createDocumentFragment();
+    let span = null;
+
+    if (selectedRange) {
+      fragment.append(selectedRange.extractContents());
+      span = createComposeFontSpan(fontId, fragment);
+      selectedRange.insertNode(span);
+    } else {
+      if (!getEditableText(target).trim()) return false;
+      while (target.firstChild) {
+        fragment.append(target.firstChild);
+      }
+      span = createComposeFontSpan(fontId, fragment);
+      target.append(span);
+    }
+
+    const selection = window.getSelection();
+    if (selection && span.isConnected) {
+      const nextRange = document.createRange();
+      nextRange.selectNode(span);
+      selection.removeAllRanges();
+      selection.addRange(nextRange);
+      savedTextSelectionRange = nextRange.cloneRange();
+    }
+    persistEditableDraftValue(target);
+    syncComposeTextTray();
+    return true;
+  }
+
+  function applySizeToSelectedText(scale) {
+    const normalizedScale = normalizeComposeRichTextSizeScale(scale);
+    if (!activeFixedTextKey || !normalizedScale) return false;
+    const target = editableKeyMap[activeFixedTextKey];
+    if (!target) return false;
+    const selectedRange = getRestoredSelectedTextRange(target);
+    if (!selectedRange) {
+      updateComposeTextStyle({ scale: normalizedScale });
+      return true;
+    }
+
+    const fragment = document.createDocumentFragment();
+    fragment.append(selectedRange.extractContents());
+    const span = createComposeSizeSpan(normalizedScale, fragment);
+    if (!span) return false;
+    selectedRange.insertNode(span);
+
+    const selection = window.getSelection();
+    if (selection && span.isConnected) {
+      const nextRange = document.createRange();
+      nextRange.selectNode(span);
+      selection.removeAllRanges();
+      selection.addRange(nextRange);
+      savedTextSelectionRange = nextRange.cloneRange();
+    }
+    persistEditableDraftValue(target);
+    syncComposeTextTray();
+    return true;
   }
 
   function insertPlainText(element, text) {
@@ -2683,16 +3616,149 @@ function bindComposeEvents() {
     });
     if (composeSheet?.dataset.template === 'page8') {
       renderCustomCanvas();
+    } else if (composeSheet?.dataset.template) {
+      applyFixedTemplateLayout(composeSheet.dataset.template);
     }
   }
 
   function getEditableValue(name) {
-    const target = document.querySelector(`[data-editable="${name}"]`);
+    const target = editableKeyMap[name] || document.querySelector(`[data-editable="${name}"]`);
     if (!target) return '';
-    if (isPage7ConstrainedEditable(target)) {
-      return getPage7RawText(target).trim();
+    if (target.style.display === 'none') {
+      return '';
     }
-    return target.innerText.replace(/\r/g, '').trim();
+    return getEditableText(target).replace(/\r/g, '').trim();
+  }
+
+  function getEditableRichTextValue(name) {
+    const target = editableKeyMap[name] || document.querySelector(`[data-editable="${name}"]`);
+    if (!target || target.style.display === 'none') return '';
+    return getEditableRichTextHtml(target);
+  }
+
+  function getComposeRichTextSnapshot(source = {}) {
+    return COMPOSE_TEXT_FIELD_KEYS.reduce((next, fieldKey) => {
+      next[fieldKey] = getEditableRichTextValue(fieldKey) || source[fieldKey] || '';
+      return next;
+    }, {});
+  }
+
+  function getFixedTemplateLiveValues(source = {}) {
+    const templateId = source.templateId || composeSheet?.dataset.template;
+    if (!templateId || templateId === 'page8') {
+      return {};
+    }
+    const layout = getFixedTemplateLayout(templateId);
+    if (!layout) {
+      return {};
+    }
+    return layout.texts.reduce((values, block) => {
+      const element = editableKeyMap[block.fieldKey];
+      if (!element) return values;
+      values[block.fieldKey] = getEditableText(element).replace(/\r/g, '').trim();
+      return values;
+    }, {});
+  }
+
+  function buildComposeRenderValues(snapshot) {
+    const source = snapshot || uiState.composeWorkingDraft || composeDraft || {};
+    const fixedLiveValues = getFixedTemplateLiveValues(source);
+    const visibleText = Object.prototype.hasOwnProperty.call(fixedLiveValues, 'text')
+      ? fixedLiveValues.text
+      : getEditableValue('text');
+    const visibleHeadline = Object.prototype.hasOwnProperty.call(fixedLiveValues, 'headline')
+      ? fixedLiveValues.headline
+      : getEditableValue('headline');
+    const headline = visibleText || visibleHeadline || source.headline || composePreviewDefaults.headline;
+    const richTexts = getComposeRichTextSnapshot(source.richTexts);
+    if (richTexts.text) {
+      richTexts.headline = richTexts.text;
+    }
+    return {
+      templateId: source.templateId,
+      backgroundColor: source.backgroundColor,
+      text: visibleText || source.text || headline,
+      headline,
+      subhead: fixedLiveValues.subhead || getEditableValue('subhead') || source.subhead,
+      text2: fixedLiveValues.text2 || getEditableValue('text2') || source.text2,
+      text3: fixedLiveValues.text3 || getEditableValue('text3') || source.text3,
+      intro: fixedLiveValues.intro || getEditableValue('intro') || source.intro,
+      body: fixedLiveValues.body || getEditableValue('body') || source.body,
+      date: fixedLiveValues.date || getEditableValue('date') || source.date,
+      editor: fixedLiveValues.editor || getEditableValue('editor') || source.editor,
+      textStyles: source.textStyles,
+      richTexts,
+      fixedLayout: source.fixedLayout,
+      customLayout: source.customLayout,
+    };
+  }
+
+  function getFixedTextRenderScale() {
+    if (composeSheet?.dataset.template === 'page8') {
+      return 1;
+    }
+    const frameWidth = composeFrame?.getBoundingClientRect().width || 0;
+    return frameWidth > 0 ? 1240 / frameWidth : 1;
+  }
+
+  async function renderCurrentComposeImage(draftSnapshot, values, options = {}) {
+    const allowCanvasFallback = Boolean(options.allowCanvasFallback);
+    if (composeFrame && composeStage === 'edit') {
+      try {
+        const captured = await captureComposeFrameToDataUrl(composeFrame);
+        if (captured) return captured;
+      } catch (error) {
+        console.warn('DOM capture failed. Image was not saved from canvas fallback.', error);
+      }
+    }
+    if (!allowCanvasFallback) {
+      return '';
+    }
+    return renderComposeTemplate(values, draftSnapshot.standardFiles, {
+      fixedTextRenderScale: getFixedTextRenderScale(),
+    });
+  }
+
+  async function prepareComposeImageData(draftSnapshot = null, values = null) {
+    if (!uiState.composePreparedImageDirty && uiState.composePreparedImageData) {
+      return uiState.composePreparedImageData;
+    }
+    if (composeStage !== 'edit') {
+      return uiState.composePreparedImageData || '';
+    }
+    const nextDraftSnapshot = draftSnapshot || await finalizeComposeDraftSnapshot();
+    const nextValues = values || buildComposeRenderValues(nextDraftSnapshot);
+    const imageData = await renderCurrentComposeImage(nextDraftSnapshot, nextValues);
+    if (!imageData) return '';
+    uiState.composePreparedImageData = imageData;
+    uiState.composePreparedImageDirty = false;
+    return imageData;
+  }
+
+  function syncVisibleComposeEditables() {
+    editables.forEach((element) => {
+      if (element.style.display === 'none') return;
+      clampEditable(element);
+    });
+  }
+
+  function waitForComposeFrame() {
+    return new Promise((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }
+
+  async function finalizeComposeDraftSnapshot(options = {}) {
+    suppressComposeImageDirty = true;
+    try {
+      syncVisibleComposeEditables();
+      buildComposeDraftSnapshot(options);
+      await waitForComposeFrame();
+      syncVisibleComposeEditables();
+      return buildComposeDraftSnapshot(options);
+    } finally {
+      suppressComposeImageDirty = false;
+    }
   }
 
   function setPreviewBackground() {
@@ -2727,7 +3793,11 @@ function bindComposeEvents() {
       && currentTemplateId !== nextTemplateId
       && (currentTemplateId === 'page8' || nextTemplateId === 'page8');
     uiState.composeTemplateId = nextTemplateId;
-    persistComposeDraft({ templateId: nextTemplateId });
+    ensureFixedLayoutState(nextTemplateId);
+    persistComposeDraft({
+      templateId: nextTemplateId,
+      fixedLayout: createComposeFixedLayoutState(fixedLayoutState, nextTemplateId),
+    });
     if (isSwitchingSelectMode) {
       render();
       return;
@@ -3631,8 +4701,120 @@ function bindComposeEvents() {
     });
   }
 
+  function clearFixedResizeHandles() {
+    composeFrame?.querySelectorAll('[data-fixed-resize]').forEach((handle) => handle.remove());
+  }
+
+  function getFixedResizeTarget(type, key) {
+    return type === 'image' ? slotKeyMap[key] : editableKeyMap[key];
+  }
+
+  function applyFixedElementRect(element, rect) {
+    if (!element) return;
+    element.style.left = `${rect.x * 100}%`;
+    element.style.top = `${rect.y * 100}%`;
+    element.style.width = `${rect.width * 100}%`;
+    element.style.height = `${rect.height * 100}%`;
+    element.style.maxHeight = `${rect.height * 100}%`;
+    element.style.right = 'auto';
+    element.style.bottom = 'auto';
+  }
+
+  function renderFixedResizeHandles(layout) {
+    if (!composeFrame || composeStage !== 'edit' || composePage?.classList.contains('is-preview-mode')) {
+      clearFixedResizeHandles();
+      return;
+    }
+    clearFixedResizeHandles();
+    const records = [
+      ...layout.images.map((slot) => ({
+        type: 'image',
+        key: slot.key,
+        rect: slot,
+      })),
+      ...layout.texts.map((block) => ({
+        type: 'text',
+        key: block.fieldKey,
+        rect: block,
+      })),
+    ];
+    records.forEach((record) => {
+      const target = getFixedResizeTarget(record.type, record.key);
+      if (!target || target.style.display === 'none') return;
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'compose-fixed-resize';
+      handle.dataset.fixedResize = record.key;
+      handle.dataset.fixedResizeType = record.type;
+      handle.setAttribute('aria-label', `resize ${record.type} box`);
+      handle.style.left = `${(record.rect.x + record.rect.width) * 100}%`;
+      handle.style.top = `${(record.rect.y + record.rect.height) * 100}%`;
+      composeFrame.appendChild(handle);
+    });
+
+    composeFrame.querySelectorAll('[data-fixed-resize]').forEach((handle) => {
+      let dragState = null;
+
+      handle.addEventListener('pointerdown', (event) => {
+        const key = handle.dataset.fixedResize || '';
+        const type = handle.dataset.fixedResizeType === 'image' ? 'image' : 'text';
+        const layoutState = ensureFixedLayoutState(composeSheet?.dataset.template || DEFAULT_COMPOSE_TEMPLATE);
+        const layoutWithOverrides = getFixedTemplateLayout(composeSheet?.dataset.template, layoutState);
+        const record = type === 'image'
+          ? layoutWithOverrides?.images.find((slot) => slot.key === key)
+          : layoutWithOverrides?.texts.find((block) => block.fieldKey === key);
+        if (!record || !composeFrame) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const frameRect = composeFrame.getBoundingClientRect();
+        dragState = {
+          pointerId: event.pointerId,
+          key,
+          type,
+          originX: record.x,
+          originY: record.y,
+          originWidth: record.width,
+          originHeight: record.height,
+          startX: event.clientX,
+          startY: event.clientY,
+          frameWidth: frameRect.width,
+          frameHeight: frameRect.height,
+        };
+        handle.setPointerCapture?.(event.pointerId);
+      });
+
+      handle.addEventListener('pointermove', (event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        const rect = clampFixedRect({
+          x: dragState.originX,
+          y: dragState.originY,
+          width: dragState.originWidth + ((event.clientX - dragState.startX) / dragState.frameWidth),
+          height: dragState.originHeight + ((event.clientY - dragState.startY) / dragState.frameHeight),
+        }, dragState.type);
+        updateFixedLayoutRect(dragState.type, dragState.key, rect);
+        const target = getFixedResizeTarget(dragState.type, dragState.key);
+        applyFixedElementRect(target, rect);
+        handle.style.left = `${(rect.x + rect.width) * 100}%`;
+        handle.style.top = `${(rect.y + rect.height) * 100}%`;
+      });
+
+      const finishResize = (event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        const templateId = composeSheet?.dataset.template || DEFAULT_COMPOSE_TEMPLATE;
+        dragState = null;
+        handle.releasePointerCapture?.(event.pointerId);
+        applyFixedTemplateLayout(templateId);
+      };
+
+      handle.addEventListener('pointerup', finishResize);
+      handle.addEventListener('pointercancel', finishResize);
+    });
+  }
+
   function applyFixedTemplateLayout(templateId) {
-    const layout = getFixedTemplateLayout(templateId);
+    const layoutState = ensureFixedLayoutState(templateId);
+    const layout = getFixedTemplateLayout(templateId, layoutState);
     if (!layout) return;
 
     const visibleFields = new Set(layout.texts.map((block) => block.fieldKey));
@@ -3701,6 +4883,8 @@ function bindComposeEvents() {
       element.style.overflow = '';
       element.style.fontSize = '';
       element.style.lineHeight = '';
+      element.style.fontWeight = '';
+      element.style.letterSpacing = '';
       element.style.textAlign = '';
       element.style.whiteSpace = '';
       element.removeAttribute('data-compose-exclusion-side');
@@ -3713,6 +4897,8 @@ function bindComposeEvents() {
       element.classList.remove('compose-editable--page7-lines');
       delete element.dataset.page7RawText;
       element.dataset.singleLine = element.dataset.defaultSingleLine || 'false';
+      element.removeAttribute('data-compose-fixed-box');
+      delete element.dataset.composeFixedText;
       delete element.dataset.composeBaseFontSize;
       delete element.dataset.composeBaseLineHeight;
       if (!visibleFields.has(fieldKey) && activeFixedTextKey === fieldKey) {
@@ -3723,7 +4909,11 @@ function bindComposeEvents() {
     layout.texts.forEach((block, index) => {
       const element = editableKeyMap[block.fieldKey];
       if (!element) return;
-      const metrics = getFixedTemplateTextMetrics(block.fieldKey, block);
+      const metrics = getFixedTemplateTextMetrics(
+        block.fieldKey,
+        block,
+        getComposeTextStyleValue(block.fieldKey).scale,
+      );
       element.style.display = 'block';
       element.style.pointerEvents = 'auto';
       element.setAttribute('contenteditable', composeStage === 'edit' ? 'true' : 'false');
@@ -3739,8 +4929,14 @@ function bindComposeEvents() {
       element.style.overflow = 'hidden';
       element.style.fontSize = `${Math.round(metrics.fontSize)}px`;
       element.style.lineHeight = `${Math.round(metrics.lineHeight)}px`;
+      element.style.fontWeight = String(metrics.weight);
+      element.style.letterSpacing = metrics.letterSpacing
+        ? `${metrics.letterSpacing}px`
+        : '0';
       element.style.textAlign = block.align || 'left';
       element.style.whiteSpace = metrics.maxLines > 1 ? 'pre-wrap' : 'nowrap';
+      element.dataset.composeFixedText = 'true';
+      element.dataset.composeFixedBox = 'true';
       element.dataset.singleLine = block.singleLine === true
         ? 'true'
         : block.singleLine === false
@@ -3748,6 +4944,12 @@ function bindComposeEvents() {
           : metrics.maxLines <= 1
             ? 'true'
             : 'false';
+      element.dataset.defaultSingleLine = element.dataset.singleLine;
+      if (Number.isFinite(Number(block.maxChars))) {
+        element.dataset.maxChars = String(Number(block.maxChars));
+      } else {
+        element.removeAttribute('data-max-chars');
+      }
       const exclusion = block.exclusions?.[0];
       if (templateId === 'page7' && (block.fieldKey === 'headline' || block.fieldKey === 'body')) {
         element.classList.add('compose-editable--page7-lines');
@@ -3824,6 +5026,7 @@ function bindComposeEvents() {
       if (!element || element.style.display === 'none') return;
       clampEditable(element);
     });
+    renderFixedResizeHandles(layout);
   }
 
   function applyCustomLayout() {
@@ -3846,7 +5049,10 @@ function bindComposeEvents() {
       element.style.height = '';
       element.style.fontSize = '';
       element.style.lineHeight = '';
+      element.style.fontWeight = '';
+      element.style.letterSpacing = '';
       element.style.textAlign = '';
+      delete element.dataset.composeFixedText;
       if (key === 'editor') {
         element.style.right = '';
       }
@@ -3871,6 +5077,7 @@ function bindComposeEvents() {
       return;
     }
 
+    clearFixedResizeHandles();
     customLayoutState.imageBoxes = normalizePage8ImageBoxes({
       imageBoxes: customLayoutState.imageBoxes,
     });
@@ -3921,6 +5128,14 @@ function bindComposeEvents() {
     focusSelectedTemplateCard(uiState.composeTemplateId || composeRoot.querySelector('input[name="templateId"]:checked')?.value);
   }, 0);
 
+  document.querySelectorAll([
+    '[data-template-carousel]',
+    '[data-color-carousel]',
+    '.compose-text-tray__options',
+  ].join(',')).forEach((element) => {
+    bindDragScrollSurface(element, 'x');
+  });
+
   document.querySelectorAll('[data-template-carousel-nav]').forEach((button) => {
     button.addEventListener('click', () => {
       const viewport = document.querySelector('[data-template-carousel]');
@@ -3946,10 +5161,10 @@ function bindComposeEvents() {
   });
 
   document.querySelectorAll('[data-compose-stage-nav]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const nextStage = button.dataset.composeStageNav;
       if (!nextStage) return;
-      switchComposeStage(nextStage);
+      await switchComposeStage(nextStage);
     });
   });
 
@@ -3973,6 +5188,8 @@ function bindComposeEvents() {
       setPreviewMode(Boolean(enabled));
     });
   }
+
+  composeFrame?.addEventListener('pointerdown', focusFixedEditableFromPoint, true);
 
   setPreviewMode(false);
   applyComposeTextStyles();
@@ -4004,24 +5221,40 @@ function bindComposeEvents() {
 
     textTrayFontButtons.forEach((button) => {
       button.addEventListener('pointerdown', (event) => {
+        rememberActiveTextSelection();
         event.preventDefault();
       });
       button.addEventListener('click', () => {
-        updateComposeTextStyle({ family: button.dataset.composeTextFont || null });
+        applyFontToSelectedText(button.dataset.composeTextFont || '');
         restoreActiveComposeTextFocus();
       });
     });
 
+    textTraySizeInput?.addEventListener('pointerdown', () => {
+      rememberActiveTextSelection();
+    });
     textTraySizeInput?.addEventListener('input', (event) => {
-      updateComposeTextStyle({ scale: Number(event.target.value || 50) / 50 });
+      applySizeToSelectedText(Number(event.target.value || 50) / 50);
     });
     textTraySizeStepButtons.forEach((button) => {
+      button.addEventListener('pointerdown', (event) => {
+        rememberActiveTextSelection();
+        event.preventDefault();
+      });
       button.addEventListener('click', () => {
         if (!activeFixedTextKey) return;
-        const currentPercent = Math.round(getComposeTextStyleValue(activeFixedTextKey).scale * 50);
+        const currentScale = getSelectedTextSizeScale() || getComposeTextStyleValue(activeFixedTextKey).scale;
+        const currentPercent = Math.round(currentScale * 50);
         const delta = button.dataset.composeTextSizeStep === 'up' ? 5 : -5;
         const nextPercent = Math.max(50, Math.min(200, currentPercent + delta));
-        updateComposeTextStyle({ scale: nextPercent / 50 });
+        applySizeToSelectedText(nextPercent / 50);
+      });
+    });
+    textTrayAlignButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        if (!activeFixedTextKey) return;
+        updateFixedTextAlign(activeFixedTextKey, button.dataset.composeTextAlign || 'left');
+        restoreActiveComposeTextFocus();
       });
     });
 
@@ -4062,27 +5295,97 @@ function bindComposeEvents() {
     textTrayChrome?.addEventListener('pointercancel', finishTextTrayDrag);
   }
 
+  let textSelectionDragState = null;
+  const finishTextSelectionDrag = (event) => {
+    if (!textSelectionDragState || textSelectionDragState.pointerId !== event.pointerId) return;
+    const { element, moved } = textSelectionDragState;
+    textSelectionDragState = null;
+    element.releasePointerCapture?.(event.pointerId);
+    if (moved) {
+      event.preventDefault();
+      element.dataset.composeSuppressNextClick = 'true';
+      window.setTimeout(() => {
+        delete element.dataset.composeSuppressNextClick;
+      }, 0);
+      rememberActiveTextSelection();
+      syncComposeTextTray();
+    }
+  };
+
   editables.forEach((element) => {
     const fieldKey = element.dataset.editable;
     if (!fieldKey) return;
-    element.addEventListener('pointerdown', () => {
+    element.addEventListener('pointerdown', (event) => {
       if (element.getAttribute('contenteditable') !== 'true') return;
-      window.setTimeout(() => {
-        element.focus();
-        openComposeTextTray(fieldKey);
-      }, 0);
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      activeFixedTextKey = fieldKey;
+      openComposeTextTray(fieldKey);
+      textSelectionDragState = {
+        pointerId: event.pointerId,
+        element,
+        startX: event.clientX,
+        startY: event.clientY,
+        startRange: getTextBoundaryRangeFromPoint(element, event.clientX, event.clientY),
+        moved: false,
+      };
+      element.setPointerCapture?.(event.pointerId);
     });
+    element.addEventListener('pointermove', (event) => {
+      if (!textSelectionDragState || textSelectionDragState.pointerId !== event.pointerId) return;
+      const distance = Math.hypot(
+        event.clientX - textSelectionDragState.startX,
+        event.clientY - textSelectionDragState.startY,
+      );
+      if (!textSelectionDragState.moved && distance < 4) return;
+      textSelectionDragState.moved = true;
+      event.preventDefault();
+      selectEditableRangeFromDrag(
+        element,
+        textSelectionDragState.startRange,
+        event.clientX,
+        event.clientY,
+      );
+    });
+    element.addEventListener('pointerup', finishTextSelectionDrag);
+    element.addEventListener('pointercancel', finishTextSelectionDrag);
+    element.addEventListener('click', (event) => {
+      if (element.dataset.composeSuppressNextClick !== 'true') return;
+      event.preventDefault();
+      event.stopPropagation();
+      delete element.dataset.composeSuppressNextClick;
+    }, true);
     element.addEventListener('focus', () => {
       openComposeTextTray(fieldKey);
+      rememberActiveTextSelection();
     });
     element.addEventListener('pointerup', () => {
       openComposeTextTray(fieldKey);
+      rememberActiveTextSelection();
+      syncComposeTextTray();
+    });
+    element.addEventListener('keyup', () => {
+      rememberActiveTextSelection();
+      syncComposeTextTray();
     });
   });
 
+  if (composeSelectionChangeCleanup) {
+    composeSelectionChangeCleanup();
+    composeSelectionChangeCleanup = null;
+  }
+  const handleComposeSelectionChange = () => {
+    if (!activeFixedTextKey || !composePage?.isConnected) return;
+    rememberActiveTextSelection();
+    syncComposeTextTray();
+  };
+  document.addEventListener('selectionchange', handleComposeSelectionChange);
+  composeSelectionChangeCleanup = () => {
+    document.removeEventListener('selectionchange', handleComposeSelectionChange);
+  };
+
   composePreview?.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('[data-editable]')) return;
-    if (event.target.closest('[data-compose-text-tray]')) return;
+    if (closestFromEventTarget(event.target, '[data-editable]')) return;
+    if (closestFromEventTarget(event.target, '[data-compose-text-tray]')) return;
     minimizeComposeTextTray();
   });
 
@@ -4129,6 +5432,7 @@ function bindComposeEvents() {
           kind,
           align: button.dataset.pretextAddAlign || 'left',
         });
+        markComposeImageDirty();
         closePretextAddPopover();
       });
     });
@@ -4141,8 +5445,13 @@ function bindComposeEvents() {
         id: pretextCommandId,
         type: 'delete-selected',
       });
+      markComposeImageDirty();
       closePretextAddPopover();
     });
+
+    pretextComposeHost.addEventListener('pointerdown', markComposeImageDirty);
+    pretextComposeHost.addEventListener('input', markComposeImageDirty);
+    pretextComposeHost.addEventListener('change', markComposeImageDirty);
 
     composeRoot.addEventListener('pointerdown', (event) => {
       if (!pretextAddPopover || pretextAddPopover.hidden) return;
@@ -4399,12 +5708,14 @@ function bindComposeEvents() {
       if (!normalizedText) return;
       insertPlainText(element, normalizedText);
       clampEditable(element);
+      persistEditableDraftValue(element);
       placeCaretAtEnd(element);
     });
 
     element.addEventListener('input', () => {
       const rawValue = getEditableText(element);
       clampEditable(element);
+      persistEditableDraftValue(element);
       if (isPage7ConstrainedEditable(element) || getEditableText(element) !== rawValue) {
         placeCaretAtEnd(element);
       }
@@ -4413,20 +5724,32 @@ function bindComposeEvents() {
     element.addEventListener('blur', () => {
       normalizeEditableContent(element);
       clampEditable(element);
+      persistEditableDraftValue(element);
     });
   });
 
-  function saveDraftAndOpenProfile(snapshot) {
-    const draftSnapshot = snapshot || buildComposeDraftSnapshot();
+  async function saveDraftAndOpenProfile(snapshot) {
+    const draftSnapshot = snapshot || await finalizeComposeDraftSnapshot();
+    const values = buildComposeRenderValues(draftSnapshot);
+    const imageData = composeStage === 'edit'
+      ? await prepareComposeImageData(draftSnapshot, values)
+      : uiState.composePreparedImageData;
+    if (!imageData) return;
     const savedDraft = upsertDraft({
       id: uiState.composeDraftId || undefined,
-      title: buildComposeCaption(draftSnapshot) || draftSnapshot.headline || 'Untitled',
-      composeData: createComposeWorkingDraft(draftSnapshot),
+      title: buildComposeCaption(values) || values.headline || 'Untitled',
+      imageData,
+      composeData: createComposeWorkingDraft({
+        ...draftSnapshot,
+        ...values,
+      }),
     });
     uiState.composeDraftId = savedDraft.id;
     uiState.composeReturnState = null;
     uiState.composeWorkingDraft = null;
     uiState.composeEditingPostId = null;
+    uiState.composePreparedImageData = null;
+    uiState.composePreparedImageDirty = true;
     uiState.screen = 'profile';
     uiState.profileAuthor = null;
     uiState.profileSection = 'drafts';
@@ -4437,36 +5760,28 @@ function bindComposeEvents() {
   }
 
   document.querySelectorAll('[data-save-compose-draft]').forEach((button) => {
-    button.addEventListener('click', () => {
-      saveDraftAndOpenProfile();
+    button.addEventListener('click', async () => {
+      await saveDraftAndOpenProfile();
     });
   });
 
   document.querySelectorAll('[data-save-compose-image]').forEach((button) => {
     button.addEventListener('click', async () => {
-      const draftSnapshot = buildComposeDraftSnapshot();
-      const values = {
-        templateId: draftSnapshot.templateId,
-        backgroundColor: draftSnapshot.backgroundColor,
-        text: draftSnapshot.text,
-        headline: draftSnapshot.headline,
-        subhead: draftSnapshot.subhead,
-        intro: draftSnapshot.intro,
-        body: draftSnapshot.body,
-        date: draftSnapshot.date,
-        editor: draftSnapshot.editor,
-        textStyles: draftSnapshot.textStyles,
-        customLayout: draftSnapshot.customLayout,
-      };
-      const imageData = await renderComposeTemplate(values, draftSnapshot.standardFiles, {});
-      if (!imageData) return;
-      const link = document.createElement('a');
-      const stamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-      link.href = imageData;
-      link.download = `burn-page-${stamp}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      clearPendingComposeDownload();
+      const previousText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Making...';
+      try {
+        const draftSnapshot = await finalizeComposeDraftSnapshot();
+        const values = buildComposeRenderValues(draftSnapshot);
+        const imageData = await prepareComposeImageData(draftSnapshot, values);
+        if (imageData) {
+          showComposeDownloadLink(button, imageData);
+        }
+      } finally {
+        button.disabled = false;
+        button.textContent = previousText || 'Save';
+      }
     });
   });
 
@@ -4476,21 +5791,10 @@ function bindComposeEvents() {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const draftSnapshot = buildComposeDraftSnapshot();
-    const values = {
-      templateId: draftSnapshot.templateId,
-      backgroundColor: draftSnapshot.backgroundColor,
-      text: draftSnapshot.text,
-      headline: draftSnapshot.headline,
-      subhead: draftSnapshot.subhead,
-      intro: draftSnapshot.intro,
-      body: draftSnapshot.body,
-      date: draftSnapshot.date,
-      editor: draftSnapshot.editor,
-      textStyles: draftSnapshot.textStyles,
-      customLayout: draftSnapshot.customLayout,
-    };
-    const imageData = await renderComposeTemplate(values, draftSnapshot.standardFiles, {});
+    const draftSnapshot = await finalizeComposeDraftSnapshot();
+    const values = buildComposeRenderValues(draftSnapshot);
+    const imageData = uiState.composePreparedImageData;
+    if (!imageData) return;
     const profileName = String(getState().profile?.name || 'you').trim() || 'you';
 
     if (uiState.composeEditingPostId) {
@@ -4531,6 +5835,8 @@ function bindComposeEvents() {
     uiState.timelineTab = 'recommended';
     uiState.composeStage = 'select';
     uiState.composeWorkingDraft = null;
+    uiState.composePreparedImageData = null;
+    uiState.composePreparedImageDirty = true;
     render();
   });
 }
@@ -4557,6 +5863,7 @@ function bindMagazineEvents() {
 
 function bindProfileEvents() {
   bindPostInteractions(document.getElementById('screenArea'));
+  bindScreenScrollSurfaces();
 
   function loadImageSize(file) {
     return new Promise((resolve) => {
@@ -4802,6 +6109,7 @@ function bindProfileEvents() {
 
 function bindPostDetailEvents() {
   bindPostInteractions(document.getElementById('screenArea'));
+  bindScreenScrollSurfaces();
 
   document.querySelectorAll('[data-close-post-detail]').forEach((button) => {
     button.addEventListener('click', () => {

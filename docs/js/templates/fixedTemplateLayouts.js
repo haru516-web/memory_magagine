@@ -78,6 +78,76 @@ function pickTextKeys(count) {
   return TEXT_KEY_ORDERS[count] || TEXT_KEY_ORDERS[6];
 }
 
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeRectOverride(baseRect, override, minimums) {
+  if (!override || typeof override !== 'object') {
+    return { ...baseRect };
+  }
+  const width = clampNumber(
+    Number.isFinite(Number(override.width)) ? Number(override.width) : baseRect.width,
+    minimums.width,
+    1,
+  );
+  const height = clampNumber(
+    Number.isFinite(Number(override.height)) ? Number(override.height) : baseRect.height,
+    minimums.height,
+    1,
+  );
+  return {
+    ...baseRect,
+    x: clampNumber(
+      Number.isFinite(Number(override.x)) ? Number(override.x) : baseRect.x,
+      0,
+      1 - width,
+    ),
+    y: clampNumber(
+      Number.isFinite(Number(override.y)) ? Number(override.y) : baseRect.y,
+      0,
+      1 - height,
+    ),
+    width,
+    height,
+    align: ['left', 'center', 'right'].includes(override.align)
+      ? override.align
+      : baseRect.align,
+  };
+}
+
+function applyLayoutOverrides(layout, overrides) {
+  if (!overrides || overrides.templateId !== layout.id) {
+    return layout;
+  }
+  const imageOverrides = overrides.images || {};
+  const textOverrides = overrides.texts || {};
+  return {
+    ...layout,
+    safeArea: { ...layout.safeArea },
+    masks: layout.masks.map((mask) => ({
+      ...mask,
+      rect: { ...mask.rect },
+    })),
+    images: layout.images.map((slot) => normalizeRectOverride(
+      slot,
+      imageOverrides[slot.key],
+      { width: 0.06, height: 0.06 },
+    )),
+    texts: layout.texts.map((block) => {
+      const rect = normalizeRectOverride(
+        block,
+        textOverrides[block.fieldKey],
+        { width: 0.08, height: 0.025 },
+      );
+      return {
+        ...rect,
+        exclusions: blockExclusions(rect, layout.masks),
+      };
+    }),
+  };
+}
+
 const RAW_FIXED_TEMPLATE_LAYOUTS = {
   page1: {
     roughUrl: roughAsset('3.png'),
@@ -210,6 +280,44 @@ const RAW_FIXED_TEMPLATE_LAYOUTS = {
       rawRect(0.6810, 0.5705, 0.9349, 0.9605),
     ],
   },
+  page11: {
+    roughUrl: roughAsset('2.png'),
+    images: [
+      rawRect(0.2313, 0.1260, 0.7687, 0.6600),
+    ],
+    texts: [
+      {
+        ...rawRect(0.0460, 0.0590, 0.2051, 0.1050),
+        fieldKey: 'date',
+        singleLine: true,
+      },
+      {
+        ...rawRect(0.1825, 0.6835, 0.8175, 0.7495),
+        fieldKey: 'text2',
+        singleLine: false,
+      },
+      {
+        ...rawRect(0.1528, 0.7735, 0.8472, 0.8180),
+        fieldKey: 'text3',
+        singleLine: false,
+      },
+      {
+        ...rawRect(0.1528, 0.8415, 0.3670, 0.9425),
+        fieldKey: 'intro',
+        singleLine: false,
+      },
+      {
+        ...rawRect(0.3897, 0.8415, 0.6040, 0.9425),
+        fieldKey: 'body',
+        singleLine: false,
+      },
+      {
+        ...rawRect(0.6330, 0.8415, 0.8472, 0.9425),
+        fieldKey: 'editor',
+        singleLine: false,
+      },
+    ],
+  },
 };
 
 const normalizedLayoutCache = new Map();
@@ -242,14 +350,15 @@ function normalizeLayoutSource(templateId) {
   return layout;
 }
 
-export function getFixedTemplateLayout(templateId) {
+export function getFixedTemplateLayout(templateId, overrides = null) {
   if (!normalizedLayoutCache.has(templateId)) {
     normalizedLayoutCache.set(templateId, normalizeLayoutSource(templateId));
   }
-  return normalizedLayoutCache.get(templateId) || null;
+  const layout = normalizedLayoutCache.get(templateId) || null;
+  return layout ? applyLayoutOverrides(layout, overrides) : null;
 }
 
-export function getFixedTemplateTextMetrics(fieldKey, rect) {
+export function getFixedTemplateTextMetrics(fieldKey, rect, textScale = 1) {
   const boxHeight = rect.height * DESIGN_HEIGHT;
   const sharedFontSize = (28 / 1.5) * 0.5;
   const sharedLineRatio = 1.35;
@@ -298,29 +407,50 @@ export function getFixedTemplateTextMetrics(fieldKey, rect) {
     },
   };
   const preset = presets[fieldKey] || presets.body;
-  const fontSize = preset.size;
+  const fontSize = preset.size * clampNumber(Number(textScale) || 1, 1, 4);
   const lineHeight = Math.max(fontSize * preset.lineRatio, fontSize + 4);
+  const letterSpacing = (fieldKey === 'text' || fieldKey === 'headline') ? fontSize * 0.03 : 0;
   const maxLines = Math.max(1, Math.floor((boxHeight + (fontSize * 0.2)) / lineHeight));
   return {
     fontSize,
     lineHeight,
+    letterSpacing,
     maxLines,
     weight: preset.weight,
     fallbackStack: preset.fallbackStack,
   };
 }
 
-function fitTextLine(ctx, units, startIndex, maxWidth) {
+function measureFixedTextLine(ctx, value, letterSpacing = 0) {
+  const text = String(value || '');
+  return ctx.measureText(text).width + Math.max(0, text.length - 1) * Math.max(0, Number(letterSpacing) || 0);
+}
+
+function drawFixedTextLine(ctx, value, x, y, letterSpacing = 0) {
+  const text = String(value || '');
+  const spacing = Math.max(0, Number(letterSpacing) || 0);
+  if (!spacing || text.length <= 1) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+  let cursorX = x;
+  Array.from(text).forEach((char) => {
+    ctx.fillText(char, cursorX, y);
+    cursorX += ctx.measureText(char).width + spacing;
+  });
+}
+
+function fitTextLine(ctx, units, startIndex, maxWidth, letterSpacing = 0) {
   let line = '';
   let index = startIndex;
   while (index < units.length) {
     const candidate = `${line}${units[index]}`;
-    if (line && ctx.measureText(candidate).width > maxWidth) {
+    if (line && measureFixedTextLine(ctx, candidate, letterSpacing) > maxWidth) {
       break;
     }
     line = candidate;
     index += 1;
-    if (ctx.measureText(line).width > maxWidth) {
+    if (measureFixedTextLine(ctx, line, letterSpacing) > maxWidth) {
       break;
     }
   }
@@ -345,14 +475,20 @@ function drawPage7ConstrainedText(ctx, text, block, metrics) {
     const restrictRight = block.fieldKey === 'headline' && lineIndex >= maxLines - 3;
     const restrictLeft = block.fieldKey === 'body' && lineIndex < 3;
     const maxWidth = restrictRight || restrictLeft ? shortWidth : fullWidth;
-    const line = fitTextLine(ctx, units, index, maxWidth);
-    ctx.fillText(line.line, x + (restrictLeft ? exclusionWidth : 0), y + (lineIndex * metrics.lineHeight));
+    const line = fitTextLine(ctx, units, index, maxWidth, metrics.letterSpacing);
+    drawFixedTextLine(
+      ctx,
+      line.line,
+      x + (restrictLeft ? exclusionWidth : 0),
+      y + (lineIndex * metrics.lineHeight),
+      metrics.letterSpacing,
+    );
     index = line.nextIndex;
   }
 }
 
 export async function renderFixedTemplate(ctx, templateId, values, files, helpers) {
-  const layout = getFixedTemplateLayout(templateId);
+  const layout = getFixedTemplateLayout(templateId, values?.fixedLayout);
   if (!layout) return;
 
   const {
@@ -361,6 +497,7 @@ export async function renderFixedTemplate(ctx, templateId, values, files, helper
     drawSlotPlaceholder,
     defaults,
     getTextFontStack,
+    getTextScale = () => 1,
   } = helpers;
 
   ctx.fillStyle = '#191514';
@@ -386,7 +523,7 @@ export async function renderFixedTemplate(ctx, templateId, values, files, helper
 
   for (const block of layout.texts) {
     const text = values?.[block.fieldKey] || defaults?.[block.fieldKey] || '';
-    const metrics = getFixedTemplateTextMetrics(block.fieldKey, block);
+    const metrics = getFixedTemplateTextMetrics(block.fieldKey, block, getTextScale(block.fieldKey));
     ctx.save();
     ctx.textAlign = block.align || 'left';
     ctx.font = `${metrics.weight} ${Math.round(metrics.fontSize)}px ${getTextFontStack(block.fieldKey, metrics.fallbackStack)}`;
@@ -400,6 +537,7 @@ export async function renderFixedTemplate(ctx, templateId, values, files, helper
         y: block.y * DESIGN_HEIGHT,
         maxWidth: block.width * DESIGN_WIDTH,
         lineHeight: metrics.lineHeight,
+        letterSpacing: metrics.letterSpacing,
         maxLines: metrics.maxLines,
         align: block.align || 'left',
         exclusions: (block.exclusions || []).map((exclusion) => ({

@@ -164,3 +164,25 @@ Open Questions
   - Refine the search page copy and section structure to match the reference layout.
   - Restyle the search shell, chips, sort control, and result cards to the quieter editorial look from the mock.
   - Add any small missing icon needed for the search UI and verify the updated layout on a mobile-sized viewport.
+
+## Compose ImageData / ComposeData Separation
+
+- Goal: Make final post display always use the completed PNG in `imageData`, while `composeData` is used only for re-editing.
+- Constraints:
+  - Do not change timeline/profile/post-detail scroll or horizontal font tray behavior.
+  - Do not add SVG download or a second display renderer.
+  - Keep the current compose editor and fixed-template persistence shape.
+- Target files:
+  - `docs/js/app.js`
+  - `docs/js/core/store.js`
+  - display readers under `docs/js/pages/`
+- Steps:
+  - Confirm display surfaces render only `<img src="${post.imageData}">`.
+  - Add a dirty flag for the prepared compose PNG.
+  - Generate the completed PNG before leaving edit for tags, while the editor DOM still exists.
+  - Reuse the same preparation path for download, draft save, post create, and post update.
+  - Remove tag-submit/profile-draft publish fallbacks that regenerate from `composeData`.
+  - Preserve `composeData` only as the editable source of truth.
+- Validation:
+  - Run JS syntax check and production build.
+  - Verify no display path calls compose rendering from `composeData`.

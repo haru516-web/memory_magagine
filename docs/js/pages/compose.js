@@ -62,10 +62,84 @@ function buildComposeTextStyleAttr(textStyles = {}, fieldKey) {
   const scale = Number.isFinite(Number(source.scale))
     ? Math.min(4, Math.max(1, Number(source.scale)))
     : 1;
-  const fontStack = source.family && COMPOSE_TEXT_FONT_STACKS[source.family]
-    ? `--compose-font-stack:${COMPOSE_TEXT_FONT_STACKS[source.family]};`
-    : '';
-  return `style="--compose-text-scale:${scale};${fontStack}"`;
+  return `style="--compose-text-scale:${scale};"`;
+}
+
+function normalizeComposeRichTextSizeScale(value) {
+  const scale = Number(value);
+  return Number.isFinite(scale) ? Math.min(4, Math.max(1, scale)) : null;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeComposeRichTextMarkup(markup = '') {
+  if (!markup || typeof document === 'undefined') return '';
+  const template = document.createElement('template');
+  template.innerHTML = String(markup);
+  const output = document.createElement('div');
+
+  const appendSafeNode = (sourceNode, targetParent) => {
+    if (sourceNode.nodeType === Node.TEXT_NODE) {
+      targetParent.append(document.createTextNode(sourceNode.textContent || ''));
+      return;
+    }
+    if (sourceNode.nodeType !== Node.ELEMENT_NODE) return;
+
+    const element = sourceNode;
+    if (element.tagName === 'BR') {
+      targetParent.append(document.createElement('br'));
+      return;
+    }
+
+    if (element.tagName === 'SPAN') {
+      const fontId = element.dataset.composeFontId;
+      const sizeScale = normalizeComposeRichTextSizeScale(element.dataset.composeTextSizeScale);
+      if ((fontId && COMPOSE_TEXT_FONT_STACKS[fontId]) || sizeScale) {
+        const span = document.createElement('span');
+        const classNames = [];
+        if (fontId && COMPOSE_TEXT_FONT_STACKS[fontId]) {
+          classNames.push('compose-rich-font');
+          span.dataset.composeFontId = fontId;
+          span.style.fontFamily = COMPOSE_TEXT_FONT_STACKS[fontId];
+        }
+        if (sizeScale) {
+          classNames.push('compose-rich-size');
+          span.dataset.composeTextSizeScale = String(sizeScale);
+          span.style.fontSize = `${sizeScale}em`;
+        }
+        span.className = classNames.join(' ');
+        Array.from(element.childNodes).forEach((child) => appendSafeNode(child, span));
+        targetParent.append(span);
+        return;
+      }
+    }
+
+    if (element.tagName === 'DIV' || element.tagName === 'P') {
+      if (targetParent.childNodes.length) {
+        targetParent.append(document.createElement('br'));
+      }
+      Array.from(element.childNodes).forEach((child) => appendSafeNode(child, targetParent));
+      return;
+    }
+
+    Array.from(element.childNodes).forEach((child) => appendSafeNode(child, targetParent));
+  };
+
+  Array.from(template.content.childNodes).forEach((child) => appendSafeNode(child, output));
+  return output.innerHTML;
+}
+
+function getComposeTextMarkup(values, fieldKey) {
+  const richMarkup = sanitizeComposeRichTextMarkup(values.richTexts?.[fieldKey] || '');
+  if (richMarkup) return richMarkup;
+  return escapeHtml(values[fieldKey] || '');
 }
 
 function renderComposeBackButton(actionAttr) {
@@ -282,7 +356,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           inputmode="text"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'text')}
-        >${values.text}</div>
+        >${getComposeTextMarkup(values, 'text')}</div>
         <div
           class="compose-sheet__headline compose-editable"
           data-editable="headline"
@@ -295,7 +369,7 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           inputmode="text"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'headline')}
-        >${values.headline}</div>
+        >${getComposeTextMarkup(values, 'headline')}</div>
         <div
           class="compose-sheet__subhead compose-editable"
           data-editable="subhead"
@@ -304,9 +378,32 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
+          tabindex="0"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'subhead')}
-        >${values.subhead}</div>
+        >${getComposeTextMarkup(values, 'subhead')}</div>
+        <div
+          class="compose-sheet__body compose-editable"
+          data-editable="text2"
+          data-placeholder="text"
+          data-default-single-line="false"
+          contenteditable="${editableAttr}"
+          tabindex="0"
+          inputmode="text"
+          spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'text2')}
+        >${getComposeTextMarkup(values, 'text2')}</div>
+        <div
+          class="compose-sheet__body compose-editable"
+          data-editable="text3"
+          data-placeholder="text"
+          data-default-single-line="false"
+          contenteditable="${editableAttr}"
+          tabindex="0"
+          inputmode="text"
+          spellcheck="false"
+          ${buildComposeTextStyleAttr(textStyles, 'text3')}
+        >${getComposeTextMarkup(values, 'text3')}</div>
         <div
           class="compose-sheet__notes compose-editable"
           data-editable="intro"
@@ -314,9 +411,10 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-max-chars="72"
           data-default-single-line="false"
           contenteditable="${editableAttr}"
+          tabindex="0"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'intro')}
-        >${values.intro}</div>
+        >${getComposeTextMarkup(values, 'intro')}</div>
         ${interactiveSlots
           ? renderUploadSlot({ id: 'imageInputSecondary', slotClass: 'compose-slot--secondary' })
           : renderStaticSlot({ id: 'imageInputSecondary', slotClass: 'compose-slot--secondary' })}
@@ -336,9 +434,10 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-max-chars="120"
           data-default-single-line="false"
           contenteditable="${editableAttr}"
+          tabindex="0"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'body')}
-        >${values.body}</div>
+        >${getComposeTextMarkup(values, 'body')}</div>
         <div
           class="compose-sheet__date compose-editable"
           data-editable="date"
@@ -347,9 +446,10 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
+          tabindex="0"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'date')}
-        >${values.date}</div>
+        >${getComposeTextMarkup(values, 'date')}</div>
         <div
           class="compose-sheet__editor compose-editable"
           data-editable="editor"
@@ -358,9 +458,10 @@ function renderComposeSheet(values, selectedId, selectedBackground, options = {}
           data-default-single-line="true"
           data-single-line="true"
           contenteditable="${editableAttr}"
+          tabindex="0"
           spellcheck="false"
           ${buildComposeTextStyleAttr(textStyles, 'editor')}
-        >${values.editor}</div>
+        >${getComposeTextMarkup(values, 'editor')}</div>
       </div>
     </div>
   `;
@@ -413,11 +514,6 @@ function renderFixedTextTray() {
     <section class="compose-text-tray" data-compose-text-tray hidden>
       <div class="compose-text-tray__chrome" data-compose-text-tray-chrome>
         <button class="compose-text-tray__handle" type="button" data-compose-text-tray-close aria-label="Toggle text settings height"></button>
-        <div class="compose-text-tray__levels" role="group" aria-label="Text settings height">
-          <button class="compose-text-tray__level" type="button" data-compose-text-tray-level="0">0%</button>
-          <button class="compose-text-tray__level" type="button" data-compose-text-tray-level="50">50%</button>
-          <button class="compose-text-tray__level" type="button" data-compose-text-tray-level="100">100%</button>
-        </div>
       </div>
       <div class="compose-text-tray__body" data-compose-text-tray-body>
         <div class="compose-text-tray__section">
@@ -441,7 +537,6 @@ function renderFixedTextTray() {
         <div class="compose-text-tray__section">
           <div class="compose-text-tray__heading">
             <span>Size</span>
-            <strong data-compose-text-size-value>50%</strong>
           </div>
           <div class="compose-text-tray__slider">
             <div class="compose-text-tray__stepper" aria-label="Adjust text size">
@@ -449,6 +544,22 @@ function renderFixedTextTray() {
               <button class="compose-text-tray__step-button" type="button" data-compose-text-size-step="down" aria-label="Decrease text size">▼</button>
             </div>
             <input type="range" min="50" max="200" step="1" value="50" data-compose-text-size />
+          </div>
+        </div>
+        <div class="compose-text-tray__section">
+          <div class="compose-text-tray__heading">
+            <span>Align</span>
+          </div>
+          <div class="compose-text-tray__align" aria-label="Text alignment">
+            <button class="compose-text-tray__align-button" type="button" data-compose-text-align="left" aria-label="Align left">
+              ${getIcon('alignLeft')}
+            </button>
+            <button class="compose-text-tray__align-button" type="button" data-compose-text-align="center" aria-label="Align center">
+              ${getIcon('alignCenter')}
+            </button>
+            <button class="compose-text-tray__align-button" type="button" data-compose-text-align="right" aria-label="Align right">
+              ${getIcon('alignRight')}
+            </button>
           </div>
         </div>
       </div>
@@ -559,11 +670,14 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
     text: draft.text || draft.headline || 'text',
     headline: draft.headline || 'text',
     subhead: draft.subhead || 'text',
+    text2: draft.text2 || 'text',
+    text3: draft.text3 || 'text',
     intro: draft.intro || 'text',
     body: draft.body || 'text',
     date: draft.date || 'text',
     editor: draft.editor || '編集者 : haru',
     textStyles: draft.textStyles || {},
+    richTexts: draft.richTexts || {},
   };
   const selectedId = options.selectedTemplateId || draft.templateId || DEFAULT_COMPOSE_TEMPLATE;
   const selectedBackground = options.selectedBackground || draft.backgroundColor || '#f8f4ee';

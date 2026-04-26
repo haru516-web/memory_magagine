@@ -35,7 +35,7 @@ function getDraftTitle(draft) {
 }
 
 function getDraftPreview(draft) {
-  return draft.composeData?.standardFiles?.primary?.file || '';
+  return draft.imageData || draft.composeData?.standardFiles?.primary?.file || '';
 }
 
 function getDraftTagSummary(draft) {
