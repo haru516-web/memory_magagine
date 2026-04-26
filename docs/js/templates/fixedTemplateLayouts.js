@@ -498,6 +498,7 @@ export async function renderFixedTemplate(ctx, templateId, values, files, helper
     defaults,
     getTextFontStack,
     getTextScale = () => 1,
+    getTextBackgroundColor = () => '',
   } = helpers;
 
   ctx.fillStyle = '#191514';
@@ -524,7 +525,18 @@ export async function renderFixedTemplate(ctx, templateId, values, files, helper
   for (const block of layout.texts) {
     const text = values?.[block.fieldKey] || defaults?.[block.fieldKey] || '';
     const metrics = getFixedTemplateTextMetrics(block.fieldKey, block, getTextScale(block.fieldKey));
+    const textBackgroundColor = getTextBackgroundColor(block.fieldKey);
     ctx.save();
+    if (textBackgroundColor) {
+      ctx.fillStyle = textBackgroundColor;
+      ctx.fillRect(
+        block.x * DESIGN_WIDTH,
+        block.y * DESIGN_HEIGHT,
+        block.width * DESIGN_WIDTH,
+        block.height * DESIGN_HEIGHT,
+      );
+    }
+    ctx.fillStyle = '#191514';
     ctx.textAlign = block.align || 'left';
     ctx.font = `${metrics.weight} ${Math.round(metrics.fontSize)}px ${getTextFontStack(block.fieldKey, metrics.fallbackStack)}`;
     if (templateId === 'page7' && (block.fieldKey === 'headline' || block.fieldKey === 'body')) {

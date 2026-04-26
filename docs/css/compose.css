@@ -190,6 +190,38 @@
   white-space: nowrap;
 }
 
+.compose-history-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.compose-history-button {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(207, 194, 182, 0.92);
+  background: rgba(255, 253, 249, 0.96);
+  color: #5b4d42;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.compose-history-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.compose-history-button:disabled {
+  opacity: 0.36;
+  pointer-events: none;
+}
+
 .compose-header-add {
   position: relative;
 }
@@ -3572,8 +3604,63 @@
   color: #241a15;
 }
 
+.compose-text-tray__background-options {
+  display: flex;
+  gap: 10px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x pinch-zoom;
+}
+
+.compose-text-tray__background-options::-webkit-scrollbar {
+  display: none;
+}
+
+.compose-text-tray__background-button {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(132, 108, 89, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.compose-text-tray__background-button.is-active {
+  border-color: rgba(45, 33, 27, 0.5);
+  box-shadow: inset 0 0 0 2px rgba(45, 33, 27, 0.12);
+}
+
+.compose-text-tray__background-swatch {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(80, 60, 46, 0.22);
+  background: var(--swatch, transparent);
+}
+
+.compose-text-tray__background-button[data-compose-text-background=''] .compose-text-tray__background-swatch {
+  background:
+    linear-gradient(135deg, transparent 46%, rgba(68, 51, 40, 0.7) 48%, rgba(68, 51, 40, 0.7) 52%, transparent 54%),
+    rgba(255, 255, 255, 0.72);
+}
+
 .compose-editable {
   font-family: var(--compose-font-stack, inherit);
+}
+
+.compose-rich-align {
+  display: block;
+  width: 100%;
+  min-width: 100%;
 }
 
 .compose-sheet__text,
@@ -3823,6 +3910,7 @@
 
 .page--compose--edit .compose-stage-header__title-wrap--with-actions,
 .page--compose--edit .compose-stage-header__inline-actions,
+.page--compose--edit .compose-history-button,
 .page--compose--edit .compose-draft-button--header,
 .page--compose--edit .compose-submit-button--header,
 .page--compose--edit .compose-save-image-button--header,
@@ -3863,6 +3951,13 @@
   min-height: 34px;
   padding: 0 9px;
   font-size: 11px;
+}
+
+.page--compose--edit .compose-history-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
 }
 
 .page--compose--select .compose-close-button {
@@ -3944,6 +4039,13 @@
     min-height: 32px;
     padding: 0 7px;
     font-size: 10px;
+  }
+
+  .page--compose--edit .compose-history-button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
   }
 
   .page--compose--edit .compose-editor--focus {
@@ -4033,7 +4135,8 @@
 .page--compose--edit--page8 .compose-header-tags-button,
 .page--compose--edit--page8 .page-back--icon,
 .page--compose--edit--page8 .compose-add-button,
-.page--compose--edit--page8 .compose-delete-button {
+.page--compose--edit--page8 .compose-delete-button,
+.page--compose--edit--page8 .compose-history-button {
   border-radius: 18px !important;
   background: rgba(255, 255, 255, 0.94) !important;
   border: 1px solid rgba(218, 201, 188, 0.94) !important;
@@ -4043,7 +4146,8 @@
 
 .page--compose--edit--page8 .page-back--icon,
 .page--compose--edit--page8 .compose-add-button,
-.page--compose--edit--page8 .compose-delete-button {
+.page--compose--edit--page8 .compose-delete-button,
+.page--compose--edit--page8 .compose-history-button {
   width: 40px;
   min-width: 40px;
   height: 40px;

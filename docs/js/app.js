@@ -89,6 +89,14 @@ const COMPOSE_TEXT_FONT_STACKS = {
 };
 const COMPOSE_TEXT_FONT_IDS = new Set(Object.keys(COMPOSE_TEXT_FONT_STACKS));
 const COMPOSE_TEXT_FIELD_KEYS = ['text', 'headline', 'subhead', 'text2', 'text3', 'intro', 'body', 'date', 'editor'];
+const COMPOSE_TEXT_BACKGROUND_COLORS = new Set([
+  '#ffffff',
+  '#f8f4ee',
+  '#f4e5de',
+  '#ece4d8',
+  '#e5ece7',
+  '#e8e5df',
+]);
 
 function getComposeFontStackById(fontId) {
   return COMPOSE_TEXT_FONT_STACKS[fontId] || '';
@@ -105,7 +113,16 @@ function getComposeRichTextFontIds(markup = '') {
 
 function normalizeComposeRichTextSizeScale(value) {
   const scale = Number(value);
-  return Number.isFinite(scale) ? Math.min(4, Math.max(1, scale)) : null;
+  return Number.isFinite(scale) ? Math.min(1.5, Math.max(0.5, scale)) : null;
+}
+
+function normalizeComposeRichTextAlign(value) {
+  return ['left', 'center', 'right'].includes(value) ? value : null;
+}
+
+function normalizeComposeTextBackgroundColor(value) {
+  const color = String(value || '').trim().toLowerCase();
+  return COMPOSE_TEXT_BACKGROUND_COLORS.has(color) ? color : null;
 }
 
 async function waitForComposeFonts(values = {}) {
@@ -185,10 +202,11 @@ function createComposeTextStyleValue(source = {}) {
     ? source.family
     : null;
   const scale = Number.isFinite(Number(source.scale))
-    ? Math.min(4, Math.max(1, Number(source.scale)))
+    ? Math.min(1.5, Math.max(0.5, Number(source.scale)))
     : 1;
+  const backgroundColor = normalizeComposeTextBackgroundColor(source.backgroundColor);
 
-  return { family, scale };
+  return { family, scale, backgroundColor };
 }
 
 function createComposeTextStyleState(source = {}) {
@@ -2126,6 +2144,9 @@ async function renderComposeTemplate(values, files, extra = {}) {
       const textScale = createComposeTextStyleValue(values.textStyles?.[fieldKey]).scale;
       return textScale * textScale * fixedTextRenderScale;
     },
+    getTextBackgroundColor(fieldKey) {
+      return createComposeTextStyleValue(values.textStyles?.[fieldKey]).backgroundColor || '';
+    },
     page8Files: extra.page8Files || {},
   });
 
@@ -2235,9 +2256,10 @@ function inlineComputedStyles(source, target) {
 
 function removeComposeCaptureChrome(clone) {
   clone.querySelectorAll('.compose-editable').forEach((element) => {
+    const authoredBackground = normalizeComposeTextBackgroundColor(element.dataset.composeTextBackgroundColor);
     element.classList.remove('is-active');
     element.style.boxShadow = 'none';
-    element.style.background = 'transparent';
+    element.style.background = authoredBackground || 'transparent';
     element.style.outline = '0';
     element.style.caretColor = 'transparent';
   });
@@ -2402,14 +2424,21 @@ function bindComposeEvents() {
   const textTraySizeStepButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-size-step]') || []);
   const textTrayFontButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-font]') || []);
   const textTrayAlignButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-align]') || []);
+  const textTrayBackgroundButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-background]') || []);
   const textTrayLevelButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-tray-level]') || []);
+  const composeHistoryButtons = Array.from(document.querySelectorAll('[data-compose-history]'));
   let activeFixedTextKey = null;
   let textTrayOpenLevel = 100;
   let textTrayDragState = null;
   let textTrayJustDragged = false;
   let pendingComposeDownloadUrl = '';
   let suppressComposeImageDirty = false;
+  let suppressComposeHistory = false;
+  let composeHistoryGestureActive = false;
   let savedTextSelectionRange = null;
+  const composeUndoStack = [];
+  const composeRedoStack = [];
+  const COMPOSE_HISTORY_LIMIT = 80;
 
   const composeTextLabels = {
     text: 'Text',
@@ -2437,11 +2466,65 @@ function bindComposeEvents() {
     uiState.composePreparedImageData = null;
   }
 
+  function getComposeHistorySnapshot() {
+    const currentTemplateId = composeSheet?.dataset.template
+      || uiState.composeTemplateId
+      || composeDraft?.templateId
+      || DEFAULT_COMPOSE_TEMPLATE;
+    const baseDraft = createComposeWorkingDraft({
+      ...(uiState.composeWorkingDraft || composeDraft || {}),
+      templateId: currentTemplateId,
+      backgroundColor: uiState.composeBackgroundColor || composeDraft?.backgroundColor || '#f8f4ee',
+      standardFiles: serializeStandardFiles(),
+      fixedLayout: createComposeFixedLayoutState(fixedLayoutState, currentTemplateId),
+      customLayout: currentTemplateId === 'page8'
+        ? (activeComposeBridge?.getSerializedLayout?.() || customLayoutState)
+        : (uiState.composeWorkingDraft || composeDraft || {}).customLayout,
+    });
+    return baseDraft;
+  }
+
+  function getComposeHistorySnapshotKey(snapshot) {
+    return JSON.stringify(snapshot || {});
+  }
+
+  function syncComposeHistoryButtons() {
+    composeHistoryButtons.forEach((button) => {
+      const action = button.dataset.composeHistory;
+      button.disabled = action === 'undo'
+        ? composeUndoStack.length === 0
+        : composeRedoStack.length === 0;
+    });
+  }
+
+  function pushComposeHistoryCheckpoint() {
+    if (suppressComposeHistory || composeStage !== 'edit') return;
+    const snapshot = getComposeHistorySnapshot();
+    const key = getComposeHistorySnapshotKey(snapshot);
+    const previous = composeUndoStack[composeUndoStack.length - 1];
+    if (previous?.key === key) return;
+    composeUndoStack.push({ key, snapshot });
+    if (composeUndoStack.length > COMPOSE_HISTORY_LIMIT) {
+      composeUndoStack.shift();
+    }
+    composeRedoStack.length = 0;
+    syncComposeHistoryButtons();
+  }
+
   function isVisualComposePartial(partial = {}) {
     return Object.keys(partial).some((key) => !['fixedTags', 'freeTags'].includes(key));
   }
 
   function persistComposeDraft(partial = {}) {
+    if (
+      !suppressComposeImageDirty
+      && !suppressComposeHistory
+      && !composeHistoryGestureActive
+      && composeStage === 'edit'
+      && isVisualComposePartial(partial)
+    ) {
+      pushComposeHistoryCheckpoint();
+    }
     if (!suppressComposeImageDirty && composeStage === 'edit' && isVisualComposePartial(partial)) {
       markComposeImageDirty();
     }
@@ -2592,6 +2675,13 @@ function bindComposeEvents() {
     if (Number.isFinite(baseLineHeight)) {
       target.style.lineHeight = `${baseLineHeight * style.scale}px`;
     }
+    if (style.backgroundColor) {
+      target.style.backgroundColor = style.backgroundColor;
+      target.dataset.composeTextBackgroundColor = style.backgroundColor;
+    } else {
+      target.style.backgroundColor = '';
+      delete target.dataset.composeTextBackgroundColor;
+    }
     target.style.removeProperty('--compose-font-stack');
     target.style.removeProperty('font-family');
   }
@@ -2608,18 +2698,23 @@ function bindComposeEvents() {
       textTrayTarget.textContent = composeTextLabels[activeFixedTextKey] || 'Text';
     }
     if (textTraySizeValue) {
-      textTraySizeValue.textContent = `${Math.round(activeSizeScale * 50)}%`;
+      textTraySizeValue.textContent = `${Math.round(activeSizeScale * 100)}%`;
     }
     if (textTraySizeInput) {
-      textTraySizeInput.value = String(Math.round(activeSizeScale * 50));
+      textTraySizeInput.value = String(Math.round(activeSizeScale * 100));
     }
     const selectedFontId = getSelectedTextFontId();
     textTrayFontButtons.forEach((button) => {
       button.classList.toggle('is-active', Boolean(selectedFontId) && button.dataset.composeTextFont === selectedFontId);
     });
     const align = getFixedTextAlign(activeFixedTextKey);
+    const selectedAlign = getSelectedTextAlign();
     textTrayAlignButtons.forEach((button) => {
-      button.classList.toggle('is-active', button.dataset.composeTextAlign === align);
+      button.classList.toggle('is-active', button.dataset.composeTextAlign === (selectedAlign || align));
+    });
+    textTrayBackgroundButtons.forEach((button) => {
+      const buttonColor = normalizeComposeTextBackgroundColor(button.dataset.composeTextBackground) || '';
+      button.classList.toggle('is-active', buttonColor === (style.backgroundColor || ''));
     });
   }
 
@@ -2926,6 +3021,17 @@ function bindComposeEvents() {
         return;
       }
 
+      if ((element.tagName === 'DIV' || element.tagName === 'SPAN') && normalizeComposeRichTextAlign(element.dataset.composeTextAlign)) {
+        const align = normalizeComposeRichTextAlign(element.dataset.composeTextAlign);
+        const div = document.createElement('div');
+        div.className = 'compose-rich-align';
+        div.dataset.composeTextAlign = align;
+        div.style.textAlign = align;
+        Array.from(element.childNodes).forEach((child) => appendSafeNode(child, div));
+        targetParent.append(div);
+        return;
+      }
+
       if (element.tagName === 'SPAN') {
         const fontId = element.dataset.composeFontId;
         const sizeScale = normalizeComposeRichTextSizeScale(element.dataset.composeTextSizeScale);
@@ -3045,9 +3151,6 @@ function bindComposeEvents() {
       return;
     }
     element.innerHTML = sanitizeComposeRichTextMarkup(element.innerHTML || '')
-      .replace(/<div><br><\/div>/gi, '<br>')
-      .replace(/<div>/gi, '<br>')
-      .replace(/<\/div>/gi, '')
       .replace(/&nbsp;/gi, ' ');
   }
 
@@ -3479,6 +3582,11 @@ function bindComposeEvents() {
     return normalizeComposeRichTextSizeScale(sizeNode?.dataset.composeTextSizeScale);
   }
 
+  function getSelectedTextAlign() {
+    const alignNode = getSelectedRichTextElement('[data-compose-text-align]');
+    return normalizeComposeRichTextAlign(alignNode?.dataset.composeTextAlign);
+  }
+
   function stripComposeFontSpans(root) {
     root.querySelectorAll?.('[data-compose-font-id]').forEach((span) => {
       span.replaceWith(...Array.from(span.childNodes));
@@ -3488,6 +3596,13 @@ function bindComposeEvents() {
 
   function stripComposeSizeSpans(root) {
     root.querySelectorAll?.('[data-compose-text-size-scale]').forEach((span) => {
+      span.replaceWith(...Array.from(span.childNodes));
+    });
+    return root;
+  }
+
+  function stripComposeAlignSpans(root) {
+    root.querySelectorAll?.('[data-compose-text-align]').forEach((span) => {
       span.replaceWith(...Array.from(span.childNodes));
     });
     return root;
@@ -3511,6 +3626,17 @@ function bindComposeEvents() {
     span.style.fontSize = `${normalizedScale}em`;
     span.append(stripComposeSizeSpans(contents));
     return span;
+  }
+
+  function createComposeAlignSpan(align, contents) {
+    const normalizedAlign = normalizeComposeRichTextAlign(align);
+    if (!normalizedAlign) return null;
+    const div = document.createElement('div');
+    div.className = 'compose-rich-align';
+    div.dataset.composeTextAlign = normalizedAlign;
+    div.style.textAlign = normalizedAlign;
+    div.append(stripComposeAlignSpans(contents));
+    return div;
   }
 
   function getRestoredSelectedTextRange(target) {
@@ -3583,6 +3709,138 @@ function bindComposeEvents() {
     persistEditableDraftValue(target);
     syncComposeTextTray();
     return true;
+  }
+
+  function applyAlignToSelectedText(align) {
+    const normalizedAlign = normalizeComposeRichTextAlign(align);
+    if (!activeFixedTextKey || !normalizedAlign) return false;
+    const target = editableKeyMap[activeFixedTextKey];
+    if (!target) return false;
+    const selectedRange = getRestoredSelectedTextRange(target);
+    if (!selectedRange) {
+      updateFixedTextAlign(activeFixedTextKey, normalizedAlign);
+      return true;
+    }
+
+    const fragment = document.createDocumentFragment();
+    fragment.append(selectedRange.extractContents());
+    const span = createComposeAlignSpan(normalizedAlign, fragment);
+    if (!span) return false;
+    selectedRange.insertNode(span);
+
+    const selection = window.getSelection();
+    if (selection && span.isConnected) {
+      const nextRange = document.createRange();
+      nextRange.selectNode(span);
+      selection.removeAllRanges();
+      selection.addRange(nextRange);
+      savedTextSelectionRange = nextRange.cloneRange();
+    }
+    persistEditableDraftValue(target);
+    syncComposeTextTray();
+    return true;
+  }
+
+  function setComposeRadioValue(name, value) {
+    composeRoot.querySelectorAll(`input[name="${name}"]`).forEach((input) => {
+      input.checked = input.value === value;
+      const option = input.closest('.template-thumb, .color-chip');
+      option?.classList.toggle('is-active', input.checked);
+    });
+  }
+
+  function restoreComposeStandardFiles(snapshot) {
+    const files = snapshot.standardFiles || {};
+    const slotInputIds = {
+      primary: 'imageInputPrimary',
+      secondary: 'imageInputSecondary',
+      accent: 'imageInputAccent',
+      detail: 'imageInputDetail',
+    };
+    Object.entries(slotInputIds).forEach(([stateKey, inputId]) => {
+      selectedFiles[stateKey] = createComposeFileState(files[stateKey]);
+      previewUrls[inputId] = selectedFiles[stateKey].file || '';
+      setPreviewImage(inputId);
+      updateSlotPosition(inputId);
+    });
+  }
+
+  function restoreComposeEditableContent(snapshot) {
+    COMPOSE_TEXT_FIELD_KEYS.forEach((fieldKey) => {
+      const element = editableKeyMap[fieldKey];
+      if (!element) return;
+      const richMarkup = sanitizeComposeRichTextMarkup(snapshot.richTexts?.[fieldKey] || '');
+      if (richMarkup) {
+        element.innerHTML = richMarkup;
+      } else {
+        element.textContent = normalizeEditableValue(element, snapshot[fieldKey] || composePreviewDefaults[fieldKey] || '');
+      }
+      element.dataset.previousValue = getEditableText(element);
+    });
+  }
+
+  function restoreComposeCustomLayout(snapshot) {
+    const layout = snapshot.customLayout || {};
+    customLayoutState.options = normalizePage8Options(layout);
+    customLayoutState.imageBoxes = normalizePage8ImageBoxes(layout);
+    customLayoutState.textBoxes = normalizePage8TextBoxes(layout, snapshot);
+    customLayoutState.selectedId = null;
+    renderCustomCanvas();
+  }
+
+  function restoreComposeHistorySnapshot(snapshot) {
+    const nextDraft = createComposeWorkingDraft(snapshot);
+    suppressComposeHistory = true;
+    try {
+      uiState.composeWorkingDraft = nextDraft;
+      uiState.composeTemplateId = nextDraft.templateId;
+      uiState.composeBackgroundColor = nextDraft.backgroundColor;
+      fixedLayoutState = createComposeFixedLayoutState(nextDraft.fixedLayout, nextDraft.templateId);
+      setComposeRadioValue('templateId', nextDraft.templateId);
+      setComposeRadioValue('backgroundColor', nextDraft.backgroundColor);
+      restoreComposeStandardFiles(nextDraft);
+      restoreComposeEditableContent(nextDraft);
+      if (composeSheet) {
+        composeSheet.style.setProperty('--sheet-bg', nextDraft.backgroundColor);
+        setPreviewTemplate(nextDraft.templateId);
+        if (nextDraft.templateId === 'page8') {
+          restoreComposeCustomLayout(nextDraft);
+        } else {
+          applyFixedTemplateLayout(nextDraft.templateId);
+          restoreComposeEditableContent(nextDraft);
+          applyComposeTextStyles();
+        }
+      }
+      pretextComposeHost?.style.setProperty('background', nextDraft.backgroundColor);
+      activeComposeBridge?.setBackgroundColor?.(nextDraft.backgroundColor);
+      markComposeImageDirty();
+    } finally {
+      suppressComposeHistory = false;
+      syncComposeHistoryButtons();
+      syncComposeTextTray();
+    }
+  }
+
+  function undoComposeHistory() {
+    const entry = composeUndoStack.pop();
+    if (!entry) return;
+    const currentSnapshot = getComposeHistorySnapshot();
+    composeRedoStack.push({
+      key: getComposeHistorySnapshotKey(currentSnapshot),
+      snapshot: currentSnapshot,
+    });
+    restoreComposeHistorySnapshot(entry.snapshot);
+  }
+
+  function redoComposeHistory() {
+    const entry = composeRedoStack.pop();
+    if (!entry) return;
+    const currentSnapshot = getComposeHistorySnapshot();
+    composeUndoStack.push({
+      key: getComposeHistorySnapshotKey(currentSnapshot),
+      snapshot: currentSnapshot,
+    });
+    restoreComposeHistorySnapshot(entry.snapshot);
   }
 
   function insertPlainText(element, text) {
@@ -4489,7 +4747,11 @@ function bindComposeEvents() {
         const deltaX = event.clientX - dragState.startX;
         const deltaY = event.clientY - dragState.startY;
         if (!dragState.dragged && Math.hypot(deltaX, deltaY) < 6) return;
-        dragState.dragged = true;
+        if (!dragState.dragged) {
+          pushComposeHistoryCheckpoint();
+          composeHistoryGestureActive = true;
+          dragState.dragged = true;
+        }
         event.preventDefault();
         const record = getCustomItemRecord(dragState.itemId);
         if (!record) return;
@@ -4542,6 +4804,7 @@ function bindComposeEvents() {
         const openedSurface = dragState.targetSurface;
         const openedText = dragState.targetText;
         dragState = null;
+        composeHistoryGestureActive = false;
         item.releasePointerCapture?.(event.pointerId);
         if (wasDragged) return;
         if (openedSurface) {
@@ -4640,6 +4903,8 @@ function bindComposeEvents() {
         event.preventDefault();
         event.stopPropagation();
         selectCustomItem(itemId);
+        pushComposeHistoryCheckpoint();
+        composeHistoryGestureActive = true;
         const frameRect = composeFrame.getBoundingClientRect();
         dragState = {
           pointerId: event.pointerId,
@@ -4687,6 +4952,7 @@ function bindComposeEvents() {
       const finishDrag = (event) => {
         if (!dragState || dragState.pointerId !== event.pointerId) return;
         dragState = null;
+        composeHistoryGestureActive = false;
         handle.releasePointerCapture?.(event.pointerId);
       };
 
@@ -4766,6 +5032,8 @@ function bindComposeEvents() {
         if (!record || !composeFrame) return;
         event.preventDefault();
         event.stopPropagation();
+        pushComposeHistoryCheckpoint();
+        composeHistoryGestureActive = true;
         const frameRect = composeFrame.getBoundingClientRect();
         dragState = {
           pointerId: event.pointerId,
@@ -4803,6 +5071,7 @@ function bindComposeEvents() {
         if (!dragState || dragState.pointerId !== event.pointerId) return;
         const templateId = composeSheet?.dataset.template || DEFAULT_COMPOSE_TEMPLATE;
         dragState = null;
+        composeHistoryGestureActive = false;
         handle.releasePointerCapture?.(event.pointerId);
         applyFixedTemplateLayout(templateId);
       };
@@ -5132,6 +5401,7 @@ function bindComposeEvents() {
     '[data-template-carousel]',
     '[data-color-carousel]',
     '.compose-text-tray__options',
+    '.compose-text-tray__background-options',
   ].join(',')).forEach((element) => {
     bindDragScrollSurface(element, 'x');
   });
@@ -5167,6 +5437,17 @@ function bindComposeEvents() {
       await switchComposeStage(nextStage);
     });
   });
+
+  composeHistoryButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      if (button.dataset.composeHistory === 'undo') {
+        undoComposeHistory();
+      } else {
+        redoComposeHistory();
+      }
+    });
+  });
+  syncComposeHistoryButtons();
 
   if (composeStage === 'select') {
     return;
@@ -5232,9 +5513,17 @@ function bindComposeEvents() {
 
     textTraySizeInput?.addEventListener('pointerdown', () => {
       rememberActiveTextSelection();
+      pushComposeHistoryCheckpoint();
+      composeHistoryGestureActive = true;
     });
+    const finishTextSizeDrag = () => {
+      composeHistoryGestureActive = false;
+    };
+    textTraySizeInput?.addEventListener('pointerup', finishTextSizeDrag);
+    textTraySizeInput?.addEventListener('pointercancel', finishTextSizeDrag);
+    textTraySizeInput?.addEventListener('change', finishTextSizeDrag);
     textTraySizeInput?.addEventListener('input', (event) => {
-      applySizeToSelectedText(Number(event.target.value || 50) / 50);
+      applySizeToSelectedText(Number(event.target.value || 100) / 100);
     });
     textTraySizeStepButtons.forEach((button) => {
       button.addEventListener('pointerdown', (event) => {
@@ -5244,16 +5533,29 @@ function bindComposeEvents() {
       button.addEventListener('click', () => {
         if (!activeFixedTextKey) return;
         const currentScale = getSelectedTextSizeScale() || getComposeTextStyleValue(activeFixedTextKey).scale;
-        const currentPercent = Math.round(currentScale * 50);
+        const currentPercent = Math.round(currentScale * 100);
         const delta = button.dataset.composeTextSizeStep === 'up' ? 5 : -5;
-        const nextPercent = Math.max(50, Math.min(200, currentPercent + delta));
-        applySizeToSelectedText(nextPercent / 50);
+        const nextPercent = Math.max(50, Math.min(150, currentPercent + delta));
+        applySizeToSelectedText(nextPercent / 100);
       });
     });
     textTrayAlignButtons.forEach((button) => {
+      button.addEventListener('pointerdown', (event) => {
+        rememberActiveTextSelection();
+        event.preventDefault();
+      });
       button.addEventListener('click', () => {
         if (!activeFixedTextKey) return;
-        updateFixedTextAlign(activeFixedTextKey, button.dataset.composeTextAlign || 'left');
+        applyAlignToSelectedText(button.dataset.composeTextAlign || 'left');
+        restoreActiveComposeTextFocus();
+      });
+    });
+    textTrayBackgroundButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        if (!activeFixedTextKey) return;
+        updateComposeTextStyle({
+          backgroundColor: normalizeComposeTextBackgroundColor(button.dataset.composeTextBackground),
+        });
         restoreActiveComposeTextFocus();
       });
     });
@@ -5612,6 +5914,8 @@ function bindComposeEvents() {
           if (!boxState || !composeFrame) return;
           event.preventDefault();
           event.stopPropagation();
+          pushComposeHistoryCheckpoint();
+          composeHistoryGestureActive = true;
           const frameRect = composeFrame.getBoundingClientRect();
           dragState = {
             pointerId: event.pointerId,
@@ -5630,6 +5934,8 @@ function bindComposeEvents() {
         if (!selectedFiles[stateKey].file) return;
         event.preventDefault();
         event.stopPropagation();
+        pushComposeHistoryCheckpoint();
+        composeHistoryGestureActive = true;
         dragState = {
           pointerId: event.pointerId,
           mode: 'pan-image',
@@ -5676,6 +5982,7 @@ function bindComposeEvents() {
       const finishDrag = (event) => {
         if (!dragState || dragState.pointerId !== event.pointerId) return;
         dragState = null;
+        composeHistoryGestureActive = false;
         slot.classList.remove('is-dragging');
         slot.releasePointerCapture?.(event.pointerId);
       };

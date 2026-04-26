@@ -3,12 +3,21 @@ import { getFixedTemplateLayout } from '../templates/fixedTemplateLayouts.js';
 import { COMPOSE_TEMPLATES, DEFAULT_COMPOSE_TEMPLATE } from '../templates/index.js';
 import { getIcon } from '../components/icons.js';
 
-const TEMPLATE_COLORS = [
+const TEXT_BOX_BACKGROUND_COLORS = [
+  { value: '', label: 'None' },
+  { value: '#ffffff', label: 'White' },
   { value: '#f8f4ee', label: 'Ivory' },
   { value: '#f4e5de', label: 'Blush' },
   { value: '#ece4d8', label: 'Sand' },
   { value: '#e5ece7', label: 'Sage' },
+  { value: '#e8e5df', label: 'Gray' },
 ];
+
+const TEXT_BOX_BACKGROUND_COLOR_VALUES = new Set(
+  TEXT_BOX_BACKGROUND_COLORS
+    .map((color) => color.value)
+    .filter(Boolean),
+);
 
 const FIXED_COMPOSE_TEMPLATES = COMPOSE_TEMPLATES.filter(
   (template) => template.id !== 'page8' && template.id !== 'page9',
@@ -60,14 +69,23 @@ function getComposeMode(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
 function buildComposeTextStyleAttr(textStyles = {}, fieldKey) {
   const source = textStyles?.[fieldKey] || {};
   const scale = Number.isFinite(Number(source.scale))
-    ? Math.min(4, Math.max(1, Number(source.scale)))
+    ? Math.min(1.5, Math.max(0.5, Number(source.scale)))
     : 1;
-  return `style="--compose-text-scale:${scale};"`;
+  const backgroundColor = TEXT_BOX_BACKGROUND_COLOR_VALUES.has(String(source.backgroundColor || '').toLowerCase())
+    ? String(source.backgroundColor).toLowerCase()
+    : '';
+  const backgroundStyle = backgroundColor ? `background-color:${backgroundColor};` : '';
+  const backgroundData = backgroundColor ? ` data-compose-text-background-color="${backgroundColor}"` : '';
+  return `style="--compose-text-scale:${scale};${backgroundStyle}"${backgroundData}`;
 }
 
 function normalizeComposeRichTextSizeScale(value) {
   const scale = Number(value);
-  return Number.isFinite(scale) ? Math.min(4, Math.max(1, scale)) : null;
+  return Number.isFinite(scale) ? Math.min(1.5, Math.max(0.5, scale)) : null;
+}
+
+function normalizeComposeRichTextAlign(value) {
+  return ['left', 'center', 'right'].includes(value) ? value : null;
 }
 
 function escapeHtml(value) {
@@ -95,6 +113,17 @@ function sanitizeComposeRichTextMarkup(markup = '') {
     const element = sourceNode;
     if (element.tagName === 'BR') {
       targetParent.append(document.createElement('br'));
+      return;
+    }
+
+    if ((element.tagName === 'DIV' || element.tagName === 'SPAN') && normalizeComposeRichTextAlign(element.dataset.composeTextAlign)) {
+      const align = normalizeComposeRichTextAlign(element.dataset.composeTextAlign);
+      const div = document.createElement('div');
+      div.className = 'compose-rich-align';
+      div.dataset.composeTextAlign = align;
+      div.style.textAlign = align;
+      Array.from(element.childNodes).forEach((child) => appendSafeNode(child, div));
+      targetParent.append(div);
       return;
     }
 
@@ -224,6 +253,14 @@ function renderComposeTagsButton(isEditing) {
 function renderComposeEditHeaderActions(isEditing) {
   return `
     <div class="compose-stage-header__inline-actions">
+      <div class="compose-history-actions" aria-label="Edit history">
+        <button class="compose-history-button" type="button" data-compose-history="undo" aria-label="Undo" disabled>
+          ${getIcon('undo')}
+        </button>
+        <button class="compose-history-button" type="button" data-compose-history="redo" aria-label="Redo" disabled>
+          ${getIcon('redo')}
+        </button>
+      </div>
       <button class="button button--ghost compose-draft-button compose-draft-button--header" type="button" data-save-compose-draft>Save Draft</button>
       <button class="button button--primary compose-submit-button compose-submit-button--header" type="button" data-compose-stage-nav="tags">${isEditing ? 'Update Tags' : 'Tags'}</button>
       <button class="button button--ghost compose-save-image-button compose-save-image-button--header" type="button" data-save-compose-image>Save</button>
@@ -261,22 +298,6 @@ function renderTemplatePicker(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
             </label>
           `).join('')}
         </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderColorPicker(selectedBackground) {
-  return `
-    <div class="color-picker-inline">
-      <div class="color-chip-track color-chip-track--inline" data-color-carousel>
-        ${TEMPLATE_COLORS.map((color) => `
-          <label class="color-chip color-chip--inline ${selectedBackground === color.value ? 'is-active' : ''}" title="${color.label}">
-            <input type="radio" name="backgroundColor" value="${color.value}" ${selectedBackground === color.value ? 'checked' : ''} />
-            <span class="color-chip__swatch" style="--swatch:${color.value}"></span>
-            <span class="color-chip__label">${color.label}</span>
-          </label>
-        `).join('')}
       </div>
     </div>
   `;
@@ -543,7 +564,7 @@ function renderFixedTextTray() {
               <button class="compose-text-tray__step-button" type="button" data-compose-text-size-step="up" aria-label="Increase text size">▲</button>
               <button class="compose-text-tray__step-button" type="button" data-compose-text-size-step="down" aria-label="Decrease text size">▼</button>
             </div>
-            <input type="range" min="50" max="200" step="1" value="50" data-compose-text-size />
+            <input type="range" min="50" max="150" step="1" value="100" data-compose-text-size />
           </div>
         </div>
         <div class="compose-text-tray__section">
@@ -560,6 +581,24 @@ function renderFixedTextTray() {
             <button class="compose-text-tray__align-button" type="button" data-compose-text-align="right" aria-label="Align right">
               ${getIcon('alignRight')}
             </button>
+          </div>
+        </div>
+        <div class="compose-text-tray__section">
+          <div class="compose-text-tray__heading">
+            <span>Background</span>
+          </div>
+          <div class="compose-text-tray__background-options" aria-label="Text box background color">
+            ${TEXT_BOX_BACKGROUND_COLORS.map((color) => `
+              <button
+                class="compose-text-tray__background-button"
+                type="button"
+                data-compose-text-background="${color.value}"
+                aria-label="${color.label}"
+                title="${color.label}"
+              >
+                <span class="compose-text-tray__background-swatch" style="--swatch:${color.value || 'transparent'}"></span>
+              </button>
+            `).join('')}
           </div>
         </div>
       </div>
@@ -587,7 +626,6 @@ function renderSelectionScreen({ values, selectedId, selectedBackground }) {
         <section class="compose-select-rail">
           ${selectionMode === 'custom' ? '' : renderTemplatePicker(fixedSelectionId)}
           <div class="compose-select-rail__footer">
-            ${renderColorPicker(selectedBackground)}
             <button class="button button--primary compose-confirm-button" type="button" data-compose-stage-nav="edit">Edit</button>
           </div>
         </section>
@@ -604,7 +642,6 @@ function renderEditorScreen({ values, selectedId, selectedBackground, isEditing 
       <header class="page-header page-header--with-back page-header--compose compose-stage-header compose-stage-header--edit">
         <div class="page-header__actions page-header__actions--compose">
           ${renderComposeBackButton('data-compose-stage-nav="select"')}
-          <h2 class="page-header__title compose-stage-header__title">Edit Page</h2>
           ${renderComposeEditHeaderActions(isEditing)}
           ${isCustomTemplate ? renderComposeAddPopoverButton() : ''}
           ${isCustomTemplate ? renderComposeDeleteButton() : ''}
