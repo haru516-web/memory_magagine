@@ -8,9 +8,44 @@ const defaultState = {
     avatarData: '',
   },
   posts: [],
+  drafts: [],
   issues: [],
   followingAuthors: [],
 };
+
+function normalizeComposeData(post) {
+  const composeData = post.composeData && typeof post.composeData === 'object'
+    ? post.composeData
+    : null;
+  if (!composeData) return null;
+
+  const sourceFiles = composeData.standardFiles && typeof composeData.standardFiles === 'object'
+    ? composeData.standardFiles
+    : {};
+  const normalizeFileState = (value, fallbackFile = '') => ({
+    file: typeof value?.file === 'string' && value.file ? value.file : fallbackFile,
+    position: {
+      x: Number(value?.position?.x) || 0.5,
+      y: Number(value?.position?.y) || 0.5,
+      zoom: Math.max(1, Number(value?.position?.zoom) || 1),
+    },
+    imageSize: value?.imageSize
+      && Number.isFinite(value.imageSize.width)
+      && Number.isFinite(value.imageSize.height)
+      ? { width: value.imageSize.width, height: value.imageSize.height }
+      : null,
+  });
+
+  return {
+    ...composeData,
+    standardFiles: {
+      primary: normalizeFileState(sourceFiles.primary),
+      secondary: normalizeFileState(sourceFiles.secondary),
+      accent: normalizeFileState(sourceFiles.accent),
+      detail: normalizeFileState(sourceFiles.detail),
+    },
+  };
+}
 
 function normalizePost(post) {
   return {
@@ -30,7 +65,23 @@ function normalizePost(post) {
     saved: Boolean(post.saved),
     createdAt: post.createdAt || new Date().toISOString(),
     updatedAt: post.updatedAt || null,
-    composeData: post.composeData || null,
+    composeData: normalizeComposeData(post),
+  };
+}
+
+function normalizeDraft(draft) {
+  const composeData = normalizeComposeData({
+    composeData: draft.composeData && typeof draft.composeData === 'object' ? draft.composeData : null,
+    imageData: '',
+  });
+  const fallbackTitle = composeData?.headline || draft.title || 'Untitled';
+  return {
+    id: draft.id || createId('draft'),
+    title: String(fallbackTitle || 'Untitled').trim() || 'Untitled',
+    imageData: draft.imageData || '',
+    composeData,
+    createdAt: draft.createdAt || new Date().toISOString(),
+    updatedAt: draft.updatedAt || draft.createdAt || new Date().toISOString(),
   };
 }
 
@@ -43,6 +94,7 @@ function normalizeState(saved) {
       avatarData: saved.profile?.avatarData || '',
     },
     posts: Array.isArray(saved.posts) ? saved.posts.map(normalizePost) : [],
+    drafts: Array.isArray(saved.drafts) ? saved.drafts.map(normalizeDraft) : [],
     issues: Array.isArray(saved.issues) ? saved.issues : [],
     followingAuthors: Array.isArray(saved.followingAuthors) ? saved.followingAuthors : [],
   };
@@ -80,6 +132,32 @@ export function addPost(post) {
     updatedAt: null,
     composeData: post.composeData || null,
   });
+  commit(next);
+}
+
+export function upsertDraft(draftInput) {
+  const next = structuredClone(state);
+  const existingIndex = next.drafts.findIndex((draft) => draft.id === draftInput.id);
+  const normalized = normalizeDraft({
+    ...draftInput,
+    updatedAt: new Date().toISOString(),
+    createdAt: existingIndex >= 0 ? next.drafts[existingIndex].createdAt : (draftInput.createdAt || new Date().toISOString()),
+  });
+
+  if (existingIndex >= 0) {
+    next.drafts[existingIndex] = normalized;
+  } else {
+    next.drafts.unshift(normalized);
+  }
+
+  commit(next);
+  return normalized;
+}
+
+export function deleteDraft(draftId) {
+  const next = structuredClone(state);
+  if (!next.drafts.some((draft) => draft.id === draftId)) return;
+  next.drafts = next.drafts.filter((draft) => draft.id !== draftId);
   commit(next);
 }
 

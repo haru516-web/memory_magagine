@@ -6,6 +6,9 @@ import { page5Template } from './page5.js';
 import { page6Template } from './page6.js';
 import { page7Template } from './page7.js';
 import { page8Template } from './page8.js';
+import { page9Template } from './page9.js';
+import { page10Template } from './page10.js';
+import { page11Template } from './page11.js';
 
 export const COMPOSE_TEMPLATES = [
   page1Template,
@@ -15,6 +18,9 @@ export const COMPOSE_TEMPLATES = [
   page5Template,
   page6Template,
   page7Template,
+  page9Template,
+  page10Template,
+  page11Template,
   page8Template,
 ];
 

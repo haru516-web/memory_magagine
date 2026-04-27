@@ -1,4 +1,4 @@
-import { formatDateTime } from '../utils/date.js';
+import { formatDate, formatDateTime } from '../utils/date.js';
 import { getIcon } from './icons.js';
 import { renderAvatarContent } from './avatar.js';
 
@@ -17,7 +17,7 @@ export function renderPreviewModal(post, options = {}) {
             <div class="avatar">${renderAvatarContent(post.authorAvatarData, post.authorIcon, `${post.authorName} avatar`)}</div>
             <div>
               <p class="modal__author">${post.authorName}</p>
-              <p class="modal__date">${formatDateTime(post.createdAt)}</p>
+              <p class="modal__date">${formatDate(post.createdAt)}</p>
             </div>
           </div>
           ${post.caption ? `<p class="modal__caption">${post.caption}</p>` : ''}

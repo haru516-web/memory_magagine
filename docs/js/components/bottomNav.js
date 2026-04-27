@@ -1,90 +1,32 @@
 import { getIcon } from './icons.js';
 
-const MAIN_ITEMS = [
-  { key: 'timeline', label: 'Timeline', icon: 'timeline' },
-  { key: 'search', label: 'Search', icon: 'search' },
-  { key: 'compose', label: 'Post', icon: 'compose' },
-  { key: 'profile', label: 'Profile', icon: 'profile' },
-];
+export function renderBottomNav(screen) {
+  const activeScreen = screen === 'timeline' ? 'home' : screen;
+  const isTimelineActive = activeScreen === 'home';
+  const isSearchActive = activeScreen === 'search';
+  const isProfileActive = activeScreen === 'profile';
 
-const TIMELINE_ITEMS = [
-  { key: 'following', label: 'フォロー', icon: 'follow' },
-  { key: 'recommended', label: 'おすすめ', icon: 'recommended' },
-];
-
-const PROFILE_ITEMS = [
-  { key: 'identity', label: 'Name / ID', icon: 'profile' },
-  { key: 'library', label: 'Like / Save', icon: 'heart' },
-  { key: 'network', label: 'Follow', icon: 'profile' },
-  { key: 'posts', label: 'Posts', icon: 'timeline' },
-  { key: 'magazine', label: 'Magazine', icon: 'issue' },
-  { key: 'edit', label: 'Edit', icon: 'compose' },
-];
-
-function renderWheel({ side, group, items, activeKey, label }) {
-  return `
-    <section
-      class="side-wheel side-wheel--${side}"
-      data-side-wheel="${group}"
-      aria-label="${label}"
-    >
-      <div class="side-wheel__ghost"></div>
-      <div class="side-wheel__track"></div>
-      <div class="side-wheel__dock" aria-hidden="true">
-        <div class="side-wheel__dock-ring"></div>
-        <div class="side-wheel__dock-core"></div>
-      </div>
-      <div class="side-wheel__status" aria-hidden="true">${label}</div>
-      <div class="side-wheel__arc" data-side-wheel-arc>
-        ${items.map((item, index) => `
-          <button
-            class="side-wheel__item ${item.key === activeKey ? 'is-active' : ''}"
-            type="button"
-            ${group === 'main'
-              ? `data-side-nav-screen="${item.key}"`
-              : group === 'timeline'
-                ? `data-side-nav-tab="${item.key}"`
-                : `data-side-nav-profile-section="${item.key}"`}
-            data-side-index="${index}"
-            aria-label="${item.label}"
-          >
-            <span class="side-wheel__item-icon">${getIcon(item.icon)}</span>
-            <span class="side-wheel__item-label">${item.label}</span>
-          </button>
-        `).join('')}
-      </div>
-    </section>
-  `;
-}
-
-export function renderBottomNav(currentScreen, uiState) {
-  const mainActiveKey = MAIN_ITEMS.some((item) => item.key === currentScreen)
-    ? currentScreen
-    : (MAIN_ITEMS.some((item) => item.key === uiState.postReturnScreen) ? uiState.postReturnScreen : 'timeline');
+  if (!['home', 'timeline', 'search', 'profile'].includes(screen)) {
+    return '';
+  }
 
   return `
-    <div class="side-wheel-system" aria-hidden="false">
-      ${renderWheel({
-        side: 'left',
-        group: 'main',
-        items: MAIN_ITEMS,
-        activeKey: mainActiveKey,
-        label: 'Page navigation',
-      })}
-      ${currentScreen === 'timeline' ? renderWheel({
-        side: 'right',
-        group: 'timeline',
-        items: TIMELINE_ITEMS,
-        activeKey: uiState.timelineTab || 'recommended',
-        label: 'Timeline filter',
-      }) : ''}
-      ${currentScreen === 'profile' && !uiState.profileAuthor ? renderWheel({
-        side: 'right',
-        group: 'profile',
-        items: PROFILE_ITEMS,
-        activeKey: uiState.profileSection || 'identity',
-        label: 'Profile sections',
-      }) : ''}
-    </div>
+    <nav class="timeline-bottom-nav" aria-label="Primary navigation">
+      <button class="timeline-bottom-nav__item ${isTimelineActive ? 'is-active' : ''}" type="button" data-home-nav="home" aria-label="Open timeline">
+        <span class="timeline-bottom-nav__icon" aria-hidden="true">${getIcon('timeline')}</span>
+      </button>
+      <button class="timeline-bottom-nav__item ${isSearchActive ? 'is-active' : ''}" type="button" data-home-nav="search" aria-label="Open search">
+        <span class="timeline-bottom-nav__icon" aria-hidden="true">${getIcon('search')}</span>
+      </button>
+      <button class="timeline-bottom-nav__item timeline-bottom-nav__item--compose" type="button" data-home-nav="compose" aria-label="Create post">
+        <span class="timeline-bottom-nav__icon" aria-hidden="true">${getIcon('post')}</span>
+      </button>
+      <button class="timeline-bottom-nav__item" type="button" data-home-nav="home" aria-label="Open settings">
+        <span class="timeline-bottom-nav__icon" aria-hidden="true">${getIcon('settings')}</span>
+      </button>
+      <button class="timeline-bottom-nav__item ${isProfileActive ? 'is-active' : ''}" type="button" data-home-nav="profile" aria-label="Open profile">
+        <span class="timeline-bottom-nav__icon" aria-hidden="true">${getIcon('profile')}</span>
+      </button>
+    </nav>
   `;
 }

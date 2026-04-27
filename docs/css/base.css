@@ -1,15 +1,16 @@
 html {
-  overflow-y: scroll;
+  overflow: hidden;
   scrollbar-gutter: stable;
+  background: #ffffff;
 }
 
 body {
   font-family: 'Noto Sans JP', sans-serif;
   color: var(--text);
-  background:
-    radial-gradient(circle at top left, rgba(255,255,255,0.85), transparent 35%),
-    linear-gradient(180deg, #fffaf6 0%, #fff4ec 100%);
-  overflow-x: hidden;
+  background: #ffffff;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
 }
 
 a {
@@ -29,4 +30,14 @@ svg {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.feature-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
 }
