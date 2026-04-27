@@ -292,7 +292,12 @@ function renderOwnProfile(state, uiState, authors) {
           : `
             <nav class="profile-journal-tabs" aria-label="Profile sections">
               ${tabs.map((tab) => `
-                <button class="profile-journal-tab ${activeSection === tab.id ? 'is-active' : ''}" type="button" data-profile-tab="${tab.id}">${tab.label}</button>
+                <button
+                  class="profile-journal-tab ${activeSection === tab.id ? 'is-active' : ''}"
+                  type="button"
+                  data-profile-tab="${tab.id}"
+                  aria-pressed="${activeSection === tab.id}"
+                >${tab.label}</button>
               `).join('')}
             </nav>
           `}

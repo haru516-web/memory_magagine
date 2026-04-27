@@ -56,7 +56,7 @@ const uiState = {
   profileAvatarCropOpen: false,
   composeStage: 'select',
   composeTemplateId: DEFAULT_COMPOSE_TEMPLATE,
-  composeBackgroundColor: '#f8f4ee',
+  composeBackgroundColor: '#ffffff',
   composeEditingPostId: null,
   composeDraftId: null,
   composeWorkingDraft: null,
@@ -71,12 +71,14 @@ const uiState = {
 };
 let composeSelectionChangeCleanup = null;
 
-const HOME_THEME_ORDER = ['dark', 'light', 'system'];
 const COMPOSE_TEXT_FONT_STACKS = {
+  'kaisei-tokumin': `'Kaisei Tokumin', 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+  'noto-serif-jp': `'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
   'noto-sans-jp': `'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif`,
   'zen-kaku-gothic-new': `'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', sans-serif`,
   'biz-udgothic': `'BIZ UDGothic', 'Yu Gothic', sans-serif`,
   'kosugi-maru': `'Kosugi Maru', 'Hiragino Maru Gothic ProN', sans-serif`,
+  'klee-one': `'Klee One', 'Klee', 'Noto Serif JP', 'Hiragino Mincho ProN', serif`,
   'line-seed-jp': `'LINE Seed JP', 'Noto Sans JP', 'Hiragino Sans', sans-serif`,
   'sawarabi-mincho': `'Sawarabi Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
   'hina-mincho': `'Hina Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
@@ -113,7 +115,7 @@ function getComposeRichTextFontIds(markup = '') {
 
 function normalizeComposeRichTextSizeScale(value) {
   const scale = Number(value);
-  return Number.isFinite(scale) ? Math.min(1.5, Math.max(0.5, scale)) : null;
+  return Number.isFinite(scale) ? Math.min(2, Math.max(0.5, scale)) : null;
 }
 
 function normalizeComposeRichTextAlign(value) {
@@ -202,7 +204,7 @@ function createComposeTextStyleValue(source = {}) {
     ? source.family
     : null;
   const scale = Number.isFinite(Number(source.scale))
-    ? Math.min(1.5, Math.max(0.5, Number(source.scale)))
+    ? Math.min(2, Math.max(0.5, Number(source.scale)))
     : 1;
   const backgroundColor = normalizeComposeTextBackgroundColor(source.backgroundColor);
 
@@ -254,7 +256,7 @@ function createComposeWorkingDraft(source = {}) {
   const textValue = source.text || source.headline || composePreviewDefaults.text;
   return {
     templateId: source.templateId || DEFAULT_COMPOSE_TEMPLATE,
-    backgroundColor: source.backgroundColor || '#f8f4ee',
+    backgroundColor: source.backgroundColor || '#ffffff',
     text: textValue,
     headline: source.headline || composePreviewDefaults.headline,
     subhead: source.subhead || composePreviewDefaults.subhead,
@@ -303,7 +305,6 @@ let app = null;
 let openingSequenceId = 0;
 let homeCoreTransitionTimer = null;
 let activeComposeBridge = null;
-let systemThemeMediaQuery = null;
 const profileAvatarDraft = {
   file: null,
   previewUrl: '',
@@ -346,14 +347,8 @@ function cleanupComposeBridge() {
   activeComposeBridge = null;
 }
 
-function resolveHomeTheme(mode = uiState.homeTheme) {
-  if (mode === 'system') {
-    const prefersDark = typeof window !== 'undefined'
-      && typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    return prefersDark ? 'dark' : 'light';
-  }
-  return mode === 'dark' ? 'dark' : 'light';
+function resolveHomeTheme() {
+  return 'light';
 }
 
 function getPageHtml() {
@@ -407,11 +402,11 @@ function renderShell() {
   if (!app) return;
   const shellClasses = ['app-shell'];
   const screenAreaClasses = ['screen-area'];
-  const themeName = resolveHomeTheme(uiState.homeTheme);
+  const themeName = resolveHomeTheme();
   const hasBottomNav = ['home', 'timeline', 'search', 'profile'].includes(uiState.screen);
 
   shellClasses.push(`app-shell--theme-${themeName}`);
-  shellClasses.push(`app-shell--theme-mode-${uiState.homeTheme}`);
+  shellClasses.push('app-shell--theme-mode-light');
   if (hasBottomNav) {
     shellClasses.push('app-shell--with-bottom-nav');
     screenAreaClasses.push('screen-area--with-bottom-nav');
@@ -522,7 +517,7 @@ function navigate(screen) {
     uiState.composeEditingPostId = null;
     uiState.composeDraftId = null;
     uiState.composeStage = 'select';
-    uiState.composeBackgroundColor = '#f8f4ee';
+    uiState.composeBackgroundColor = '#ffffff';
     uiState.composeWorkingDraft = null;
     uiState.composePreparedImageData = null;
     uiState.composePreparedImageDirty = true;
@@ -533,14 +528,14 @@ function navigate(screen) {
   uiState.commentPostId = null;
   if (screen === 'compose') {
     uiState.composeStage = 'select';
-    uiState.composeBackgroundColor = '#f8f4ee';
+    uiState.composeBackgroundColor = '#ffffff';
     uiState.composeTemplateId = DEFAULT_COMPOSE_TEMPLATE;
     uiState.composeDraftId = null;
     uiState.composePreparedImageData = null;
     uiState.composePreparedImageDirty = true;
     uiState.composeWorkingDraft = createComposeWorkingDraft({
       templateId: DEFAULT_COMPOSE_TEMPLATE,
-      backgroundColor: '#f8f4ee',
+      backgroundColor: '#ffffff',
     });
   }
   if (screen === 'profile') {
@@ -616,7 +611,7 @@ function openPostEdit(postId) {
   uiState.composePreparedImageData = post.imageData || null;
   uiState.composePreparedImageDirty = false;
   uiState.composeTemplateId = post.composeData?.templateId || DEFAULT_COMPOSE_TEMPLATE;
-  uiState.composeBackgroundColor = post.composeData?.backgroundColor || '#f8f4ee';
+  uiState.composeBackgroundColor = '#ffffff';
   uiState.composeWorkingDraft = createComposeWorkingDraft(post.composeData || {});
   uiState.screen = 'compose';
   uiState.previewPostId = null;
@@ -685,7 +680,7 @@ function openComposeDraft(draftId) {
   uiState.composePreparedImageData = draft.imageData || null;
   uiState.composePreparedImageDirty = !draft.imageData;
   uiState.composeTemplateId = draft.composeData.templateId || DEFAULT_COMPOSE_TEMPLATE;
-  uiState.composeBackgroundColor = draft.composeData.backgroundColor || '#f8f4ee';
+  uiState.composeBackgroundColor = '#ffffff';
   uiState.composeWorkingDraft = createComposeWorkingDraft(draft.composeData);
   uiState.screen = 'compose';
   uiState.previewPostId = null;
@@ -1618,11 +1613,7 @@ function bindHomeEvents() {
   };
 
   document.querySelectorAll('[data-home-theme-toggle]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const currentIndex = HOME_THEME_ORDER.indexOf(uiState.homeTheme);
-      uiState.homeTheme = HOME_THEME_ORDER[(currentIndex + 1) % HOME_THEME_ORDER.length];
-      render();
-    });
+    button.hidden = true;
   });
 
   document.querySelectorAll('[data-home-core-toggle]').forEach((button) => {
@@ -2124,7 +2115,7 @@ async function renderComposeTemplate(values, files, extra = {}) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  ctx.fillStyle = values.backgroundColor || '#f8f4ee';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
   ctx.scale(scale, scale);
   const template = getComposeTemplateById(values.templateId);
@@ -2426,11 +2417,20 @@ function bindComposeEvents() {
   const textTrayAlignButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-align]') || []);
   const textTrayBackgroundButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-background]') || []);
   const textTrayLevelButtons = Array.from(textTray?.querySelectorAll('[data-compose-text-tray-level]') || []);
+  const textTrayResizeHandles = Array.from(textTray?.querySelectorAll('[data-compose-sheet-resize]') || []);
+  const customToolsResizeHandles = Array.from(customTemplateControls?.querySelectorAll('[data-compose-sheet-resize]') || []);
   const composeHistoryButtons = Array.from(document.querySelectorAll('[data-compose-history]'));
   let activeFixedTextKey = null;
   let textTrayOpenLevel = 100;
   let textTrayDragState = null;
   let textTrayJustDragged = false;
+  let textTrayHeight = null;
+  let textTrayWidth = null;
+  let textTrayDockSide = 'right';
+  let customToolsResizeState = null;
+  let customToolsHeight = null;
+  let customToolsWidth = null;
+  let customToolsDockSide = 'right';
   let pendingComposeDownloadUrl = '';
   let suppressComposeImageDirty = false;
   let suppressComposeHistory = false;
@@ -2474,7 +2474,7 @@ function bindComposeEvents() {
     const baseDraft = createComposeWorkingDraft({
       ...(uiState.composeWorkingDraft || composeDraft || {}),
       templateId: currentTemplateId,
-      backgroundColor: uiState.composeBackgroundColor || composeDraft?.backgroundColor || '#f8f4ee',
+      backgroundColor: '#ffffff',
       standardFiles: serializeStandardFiles(),
       fixedLayout: createComposeFixedLayoutState(fixedLayoutState, currentTemplateId),
       customLayout: currentTemplateId === 'page8'
@@ -2747,6 +2747,76 @@ function bindComposeEvents() {
     return { collapsedHeight, expandedHeight, bodyHeight };
   }
 
+  function getComposeSheetResizeBounds(sheet) {
+    const previewRect = composePage?.querySelector('.compose-preview--editor')?.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const availableHeight = previewRect?.height || viewportHeight;
+    const availableWidth = previewRect?.width || viewportWidth;
+    const textTrayExpandedHeight = sheet === textTray
+      ? getComposeTextTrayHeights().expandedHeight
+      : 0;
+    return {
+      minHeight: Math.max(72, Math.round(availableHeight * 0.12)),
+      maxHeight: textTrayExpandedHeight || Math.max(160, Math.round(availableHeight * 0.82)),
+      minWidth: Math.min(Math.max(240, Math.round(availableWidth * 0.58)), availableWidth),
+      maxWidth: Math.max(240, Math.round(availableWidth)),
+      currentHeight: Math.round(sheet?.getBoundingClientRect().height || 0),
+      currentWidth: Math.round(sheet?.getBoundingClientRect().width || 0),
+    };
+  }
+
+  function clampComposeSheetHeight(sheet, nextHeight) {
+    const { minHeight, maxHeight } = getComposeSheetResizeBounds(sheet);
+    return Math.max(minHeight, Math.min(maxHeight, Math.round(nextHeight)));
+  }
+
+  function clampComposeSheetWidth(sheet, nextWidth) {
+    const { minWidth, maxWidth } = getComposeSheetResizeBounds(sheet);
+    return Math.max(minWidth, Math.min(maxWidth, Math.round(nextWidth)));
+  }
+
+  function applyComposeSheetWidth(sheet, nextWidth, options = {}) {
+    if (!sheet) return null;
+    const { animate = true, dockSide } = options;
+    const clampedWidth = clampComposeSheetWidth(sheet, nextWidth);
+    sheet.style.transition = animate ? '' : 'none';
+    if (dockSide === 'left') {
+      sheet.style.left = '0';
+      sheet.style.right = 'auto';
+      sheet.dataset.dockSide = 'left';
+    } else if (dockSide === 'right') {
+      sheet.style.left = 'auto';
+      sheet.style.right = '0';
+      sheet.dataset.dockSide = 'right';
+    }
+    sheet.style.width = `${clampedWidth}px`;
+    sheet.dataset.resized = 'true';
+    return clampedWidth;
+  }
+
+  function applyCustomToolsHeight(nextHeight, options = {}) {
+    if (!customTemplateControls) return;
+    const { animate = true } = options;
+    customToolsHeight = clampComposeSheetHeight(customTemplateControls, nextHeight);
+    customTemplateControls.style.transition = animate ? '' : 'none';
+    customTemplateControls.style.height = `${customToolsHeight}px`;
+    customTemplateControls.dataset.resized = 'true';
+  }
+
+  function applyCustomToolsSize(nextSize, options = {}) {
+    if (!customTemplateControls) return;
+    if (Number.isFinite(nextSize?.height)) {
+      applyCustomToolsHeight(nextSize.height, options);
+    }
+    if (Number.isFinite(nextSize?.width)) {
+      customToolsWidth = applyComposeSheetWidth(customTemplateControls, nextSize.width, {
+        ...options,
+        dockSide: customToolsDockSide,
+      });
+    }
+  }
+
   function syncComposeTextTrayLevels() {
     textTrayLevelButtons.forEach((button) => {
       button.classList.toggle('is-active', Number(button.dataset.composeTextTrayLevel) === textTrayOpenLevel);
@@ -2759,8 +2829,9 @@ function bindComposeEvents() {
     textTrayOpenLevel = Math.max(0, Math.min(100, nextLevel));
     const { collapsedHeight, bodyHeight } = getComposeTextTrayHeights();
     const targetHeight = collapsedHeight + (bodyHeight * (textTrayOpenLevel / 100));
+    textTrayHeight = Math.round(targetHeight);
     textTray.style.transition = animate ? '' : 'none';
-    textTray.style.height = `${Math.round(targetHeight)}px`;
+    textTray.style.height = `${textTrayHeight}px`;
     textTray.dataset.openLevel = String(textTrayOpenLevel);
     syncComposeTextTrayLevels();
   }
@@ -2790,6 +2861,7 @@ function bindComposeEvents() {
     textTray.style.removeProperty('transition');
     activeFixedTextKey = null;
     textTrayOpenLevel = 100;
+    textTrayHeight = null;
     textTrayDragState = null;
     textTray.hidden = true;
     delete textTray.dataset.activeField;
@@ -2801,6 +2873,64 @@ function bindComposeEvents() {
   function minimizeComposeTextTray() {
     if (!textTray || textTray.hidden) return;
     applyComposeTextTrayLevel(0);
+  }
+
+  function applyComposeTextTrayHeight(nextHeight, options = {}) {
+    if (!textTray) return;
+    const { collapsedHeight, bodyHeight } = getComposeTextTrayHeights();
+    if (!bodyHeight) return;
+    const { animate = true } = options;
+    const clampedHeight = clampComposeSheetHeight(textTray, nextHeight);
+    textTrayHeight = clampedHeight;
+    textTrayOpenLevel = Math.max(0, Math.min(100, ((clampedHeight - collapsedHeight) / bodyHeight) * 100));
+    textTray.style.transition = animate ? '' : 'none';
+    textTray.style.height = `${textTrayHeight}px`;
+    textTray.dataset.openLevel = String(Math.round(textTrayOpenLevel));
+    syncComposeTextTrayLevels();
+  }
+
+  function applyComposeTextTraySize(nextSize, options = {}) {
+    if (!textTray) return;
+    if (Number.isFinite(nextSize?.height)) {
+      applyComposeTextTrayHeight(nextSize.height, options);
+    }
+    if (Number.isFinite(nextSize?.width)) {
+      textTrayWidth = applyComposeSheetWidth(textTray, nextSize.width, {
+        ...options,
+        dockSide: textTrayDockSide,
+      });
+    }
+  }
+
+  function resolveComposeSheetResizeIntent(handleSide, deltaX, fallbackDockSide) {
+    if (fallbackDockSide === 'left' && handleSide === 'end') {
+      return {
+        dockSide: 'left',
+        widthDelta: deltaX,
+      };
+    }
+    if (fallbackDockSide === 'right' && handleSide === 'start') {
+      return {
+        dockSide: 'right',
+        widthDelta: -deltaX,
+      };
+    }
+    if (handleSide === 'end' && deltaX < 0) {
+      return {
+        dockSide: 'left',
+        widthDelta: deltaX,
+      };
+    }
+    if (handleSide === 'start' && deltaX > 0) {
+      return {
+        dockSide: 'right',
+        widthDelta: -deltaX,
+      };
+    }
+    return {
+      dockSide: fallbackDockSide,
+      widthDelta: handleSide === 'start' ? deltaX : -deltaX,
+    };
   }
 
   function restoreActiveComposeTextFocus() {
@@ -2892,10 +3022,7 @@ function bindComposeEvents() {
       || DEFAULT_COMPOSE_TEMPLATE,
     );
     const currentBackground = String(
-      checkedBackground?.value
-      || uiState.composeBackgroundColor
-      || composeDraft?.backgroundColor
-      || '#f8f4ee',
+      '#ffffff',
     );
     const baseDraft = persistComposeDraft({
       templateId: currentTemplateId,
@@ -4021,7 +4148,7 @@ function bindComposeEvents() {
 
   function setPreviewBackground() {
     const checked = composeRoot.querySelector('input[name="backgroundColor"]:checked');
-    const nextBackground = checked?.value || uiState.composeBackgroundColor || '#f8f4ee';
+    const nextBackground = '#ffffff';
     uiState.composeBackgroundColor = nextBackground;
     persistComposeDraft({ backgroundColor: nextBackground });
     pretextComposeHost?.style.setProperty('background', nextBackground);
@@ -5335,6 +5462,15 @@ function bindComposeEvents() {
 
     if (customTemplateControls) {
       customTemplateControls.hidden = !isCustomTemplate || composeStage !== 'edit';
+      if (isCustomTemplate && composeStage === 'edit' && customToolsHeight) {
+        applyCustomToolsHeight(customToolsHeight, { animate: false });
+      }
+      if (isCustomTemplate && composeStage === 'edit' && customToolsWidth) {
+        customToolsWidth = applyComposeSheetWidth(customTemplateControls, customToolsWidth, {
+          animate: false,
+          dockSide: customToolsDockSide,
+        });
+      }
     }
 
     if (!isCustomTemplate) {
@@ -5535,7 +5671,7 @@ function bindComposeEvents() {
         const currentScale = getSelectedTextSizeScale() || getComposeTextStyleValue(activeFixedTextKey).scale;
         const currentPercent = Math.round(currentScale * 100);
         const delta = button.dataset.composeTextSizeStep === 'up' ? 5 : -5;
-        const nextPercent = Math.max(50, Math.min(150, currentPercent + delta));
+        const nextPercent = Math.max(50, Math.min(200, currentPercent + delta));
         applySizeToSelectedText(nextPercent / 100);
       });
     });
@@ -5562,9 +5698,11 @@ function bindComposeEvents() {
 
     textTrayChrome?.addEventListener('pointerdown', (event) => {
       if (event.target.closest('[data-compose-text-tray-level]')) return;
+      if (event.target.closest('[data-compose-sheet-resize]')) return;
       textTrayDragState = {
         pointerId: event.pointerId,
         startY: event.clientY,
+        startHeight: textTray.getBoundingClientRect().height,
         startLevel: textTrayOpenLevel,
         moved: false,
       };
@@ -5581,8 +5719,8 @@ function bindComposeEvents() {
       if (!textTrayDragState.moved && Math.abs(deltaY) >= 4) {
         textTrayDragState.moved = true;
       }
-      const levelDelta = (deltaY / bodyHeight) * 100;
-      applyComposeTextTrayLevel(textTrayDragState.startLevel - levelDelta, { animate: false });
+      if (!textTrayDragState.moved) return;
+      applyComposeTextTrayHeight(textTrayDragState.startHeight - deltaY, { animate: false });
     });
 
     const finishTextTrayDrag = (event) => {
@@ -5590,11 +5728,124 @@ function bindComposeEvents() {
       textTrayJustDragged = textTrayDragState.moved;
       textTrayDragState = null;
       textTrayChrome?.releasePointerCapture?.(event.pointerId);
-      applyComposeTextTrayLevel(snapComposeTextTrayLevel(textTrayOpenLevel));
+      if (textTrayHeight) {
+        applyComposeTextTrayHeight(textTrayHeight);
+      }
     };
 
     textTrayChrome?.addEventListener('pointerup', finishTextTrayDrag);
     textTrayChrome?.addEventListener('pointercancel', finishTextTrayDrag);
+
+    textTrayResizeHandles.forEach((handle) => {
+      handle.addEventListener('pointerdown', (event) => {
+        if (!textTray) return;
+        const handleSide = handle.dataset.composeSheetResize === 'start' ? 'start' : 'end';
+        textTrayDragState = {
+          pointerId: event.pointerId,
+          handleSide,
+          dockSide: textTrayDockSide,
+          startX: event.clientX,
+          startY: event.clientY,
+          startWidth: textTray.getBoundingClientRect().width,
+          startHeight: textTray.getBoundingClientRect().height,
+          moved: false,
+        };
+        textTrayJustDragged = false;
+        textTray.style.transition = 'none';
+        handle.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      });
+      handle.addEventListener('pointermove', (event) => {
+        if (!textTrayDragState || textTrayDragState.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - textTrayDragState.startX;
+        const deltaY = event.clientY - textTrayDragState.startY;
+        if (!textTrayDragState.moved && Math.hypot(deltaX, deltaY) >= 4) {
+          textTrayDragState.moved = true;
+        }
+        if (!textTrayDragState.moved) return;
+        const intent = resolveComposeSheetResizeIntent(
+          textTrayDragState.handleSide,
+          deltaX,
+          textTrayDragState.dockSide,
+        );
+        textTrayDockSide = intent.dockSide;
+        applyComposeTextTraySize({
+          width: textTrayDragState.startWidth + intent.widthDelta,
+          height: textTrayDragState.startHeight - deltaY,
+        }, { animate: false });
+      });
+      const finishResize = (event) => {
+        if (!textTrayDragState || textTrayDragState.pointerId !== event.pointerId) return;
+        textTrayJustDragged = textTrayDragState.moved;
+        textTrayDragState = null;
+        handle.releasePointerCapture?.(event.pointerId);
+        if (textTrayHeight) {
+          applyComposeTextTrayHeight(textTrayHeight);
+        }
+        if (textTrayWidth) {
+          textTrayWidth = applyComposeSheetWidth(textTray, textTrayWidth, { dockSide: textTrayDockSide });
+        }
+        if (textTrayOpenLevel > 0) {
+          restoreActiveComposeTextFocus();
+        }
+      };
+      handle.addEventListener('pointerup', finishResize);
+      handle.addEventListener('pointercancel', finishResize);
+    });
+  }
+
+  if (customTemplateControls && customToolsResizeHandles.length) {
+    customToolsResizeHandles.forEach((handle) => {
+      handle.addEventListener('pointerdown', (event) => {
+        if (customTemplateControls.hidden) return;
+        const handleSide = handle.dataset.composeSheetResize === 'start' ? 'start' : 'end';
+        customToolsResizeState = {
+          pointerId: event.pointerId,
+          handleSide,
+          dockSide: customToolsDockSide,
+          startX: event.clientX,
+          startY: event.clientY,
+          startWidth: customTemplateControls.getBoundingClientRect().width,
+          startHeight: customTemplateControls.getBoundingClientRect().height,
+          moved: false,
+        };
+        customTemplateControls.style.transition = 'none';
+        handle.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      });
+      handle.addEventListener('pointermove', (event) => {
+        if (!customToolsResizeState || customToolsResizeState.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - customToolsResizeState.startX;
+        const deltaY = event.clientY - customToolsResizeState.startY;
+        if (!customToolsResizeState.moved && Math.hypot(deltaX, deltaY) >= 4) {
+          customToolsResizeState.moved = true;
+        }
+        if (!customToolsResizeState.moved) return;
+        const intent = resolveComposeSheetResizeIntent(
+          customToolsResizeState.handleSide,
+          deltaX,
+          customToolsResizeState.dockSide,
+        );
+        customToolsDockSide = intent.dockSide;
+        applyCustomToolsSize({
+          width: customToolsResizeState.startWidth + intent.widthDelta,
+          height: customToolsResizeState.startHeight - deltaY,
+        }, { animate: false });
+      });
+      const finishResize = (event) => {
+        if (!customToolsResizeState || customToolsResizeState.pointerId !== event.pointerId) return;
+        customToolsResizeState = null;
+        handle.releasePointerCapture?.(event.pointerId);
+        if (customToolsHeight || customToolsWidth) {
+          applyCustomToolsSize({
+            width: customToolsWidth,
+            height: customToolsHeight,
+          });
+        }
+      };
+      handle.addEventListener('pointerup', finishResize);
+      handle.addEventListener('pointercancel', finishResize);
+    });
   }
 
   let textSelectionDragState = null;
@@ -5767,7 +6018,7 @@ function bindComposeEvents() {
         activeComposeBridge = mountComposePretextEditor(pretextComposeHost, {
           customLayout: composeDraft?.customLayout || {},
           textValues: page8DraftValues,
-          backgroundColor: uiState.composeBackgroundColor || composeDraft?.backgroundColor || '#f8f4ee',
+          backgroundColor: '#ffffff',
         });
       })
       .catch((error) => {
@@ -6512,19 +6763,6 @@ export function bootLegacyApp(root = document.getElementById('app')) {
     throw new Error('bootLegacyApp requires an app root element.');
   }
   app = root;
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && !systemThemeMediaQuery) {
-    systemThemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleSystemThemeChange = () => {
-      if (uiState.homeTheme === 'system') {
-        render();
-      }
-    };
-    if (typeof systemThemeMediaQuery.addEventListener === 'function') {
-      systemThemeMediaQuery.addEventListener('change', handleSystemThemeChange);
-    } else if (typeof systemThemeMediaQuery.addListener === 'function') {
-      systemThemeMediaQuery.addListener(handleSystemThemeChange);
-    }
-  }
   render();
   return { render };
 }

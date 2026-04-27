@@ -27,7 +27,10 @@ const COMPOSE_TEXT_FONT_GROUPS = [
   {
     label: 'ショートテキスト用',
     options: [
+      { id: 'noto-serif-jp', label: 'Noto Serif JP' },
       { id: 'noto-sans-jp', label: 'Noto Sans JP' },
+      { id: 'source-han-serif', label: 'Source Han Serif' },
+      { id: 'klee-one', label: 'Klee One' },
       { id: 'zen-kaku-gothic-new', label: 'Zen Kaku Gothic New' },
       { id: 'biz-udgothic', label: 'BIZ UDGothic' },
       { id: 'kosugi-maru', label: 'Kosugi Maru' },
@@ -37,9 +40,9 @@ const COMPOSE_TEXT_FONT_GROUPS = [
   {
     label: 'タイトル用',
     options: [
+      { id: 'kaisei-tokumin', label: 'Kaisei Tokumin' },
       { id: 'sawarabi-mincho', label: 'Sawarabi Mincho' },
       { id: 'hina-mincho', label: 'Hina Mincho' },
-      { id: 'source-han-serif', label: 'Source Han Serif' },
       { id: 'shippori-mincho', label: 'Shippori Mincho' },
       { id: 'zen-old-mincho', label: 'Zen Old Mincho' },
     ],
@@ -47,10 +50,13 @@ const COMPOSE_TEXT_FONT_GROUPS = [
 ];
 
 const COMPOSE_TEXT_FONT_STACKS = {
+  'kaisei-tokumin': `'Kaisei Tokumin', 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
+  'noto-serif-jp': `'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
   'noto-sans-jp': `'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif`,
   'zen-kaku-gothic-new': `'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', sans-serif`,
   'biz-udgothic': `'BIZ UDGothic', 'Yu Gothic', sans-serif`,
   'kosugi-maru': `'Kosugi Maru', 'Hiragino Maru Gothic ProN', sans-serif`,
+  'klee-one': `'Klee One', 'Klee', 'Noto Serif JP', 'Hiragino Mincho ProN', serif`,
   'line-seed-jp': `'LINE Seed JP', 'Noto Sans JP', 'Hiragino Sans', sans-serif`,
   'sawarabi-mincho': `'Sawarabi Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
   'hina-mincho': `'Hina Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif`,
@@ -69,7 +75,7 @@ function getComposeMode(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
 function buildComposeTextStyleAttr(textStyles = {}, fieldKey) {
   const source = textStyles?.[fieldKey] || {};
   const scale = Number.isFinite(Number(source.scale))
-    ? Math.min(1.5, Math.max(0.5, Number(source.scale)))
+    ? Math.min(2, Math.max(0.5, Number(source.scale)))
     : 1;
   const backgroundColor = TEXT_BOX_BACKGROUND_COLOR_VALUES.has(String(source.backgroundColor || '').toLowerCase())
     ? String(source.backgroundColor).toLowerCase()
@@ -81,7 +87,7 @@ function buildComposeTextStyleAttr(textStyles = {}, fieldKey) {
 
 function normalizeComposeRichTextSizeScale(value) {
   const scale = Number(value);
-  return Number.isFinite(scale) ? Math.min(1.5, Math.max(0.5, scale)) : null;
+  return Number.isFinite(scale) ? Math.min(2, Math.max(0.5, scale)) : null;
 }
 
 function normalizeComposeRichTextAlign(value) {
@@ -533,6 +539,8 @@ function renderComposeModeSwitch(activeMode) {
 function renderFixedTextTray() {
   return `
     <section class="compose-text-tray" data-compose-text-tray hidden>
+      <button class="compose-sheet-resize compose-sheet-resize--start" type="button" data-compose-sheet-resize="start" aria-label="Resize text settings sheet from left corner"></button>
+      <button class="compose-sheet-resize compose-sheet-resize--end" type="button" data-compose-sheet-resize="end" aria-label="Resize text settings sheet from right corner"></button>
       <div class="compose-text-tray__chrome" data-compose-text-tray-chrome>
         <button class="compose-text-tray__handle" type="button" data-compose-text-tray-close aria-label="Toggle text settings height"></button>
       </div>
@@ -544,7 +552,6 @@ function renderFixedTextTray() {
           </div>
           ${COMPOSE_TEXT_FONT_GROUPS.map((group) => `
             <div class="compose-text-tray__font-group">
-              <span class="compose-text-tray__group-label">${group.label}</span>
               <div class="compose-text-tray__options">
                 ${group.options.map((option) => `
                   <button class="compose-text-tray__option" type="button" data-compose-text-font="${option.id}">
@@ -564,7 +571,7 @@ function renderFixedTextTray() {
               <button class="compose-text-tray__step-button" type="button" data-compose-text-size-step="up" aria-label="Increase text size">▲</button>
               <button class="compose-text-tray__step-button" type="button" data-compose-text-size-step="down" aria-label="Decrease text size">▼</button>
             </div>
-            <input type="range" min="50" max="150" step="1" value="100" data-compose-text-size />
+            <input type="range" min="50" max="200" step="1" value="100" data-compose-text-size />
           </div>
         </div>
         <div class="compose-text-tray__section">
@@ -652,24 +659,32 @@ function renderEditorScreen({ values, selectedId, selectedBackground, isEditing 
         <section class="compose-editor compose-editor--focus ${isCustomTemplate ? 'compose-editor--page8' : ''}">
           <section class="compose-preview compose-preview--editor ${isCustomTemplate ? 'compose-preview--page8' : ''}">
             ${isCustomTemplate
-              ? '<div class="compose-pretext-host compose-pretext-host--page8" data-compose-pretext-host></div>'
+              ? `<div class="compose-pretext-host compose-pretext-host--page8" data-compose-pretext-host></div>
+                 ${renderCustomTools(isCustomTemplate)}`
               : renderComposeSheet(values, selectedId, selectedBackground, { editable: true, interactiveSlots: true })}
+            ${isCustomTemplate ? '' : renderFixedTextTray()}
           </section>
-          ${isCustomTemplate ? '' : renderFixedTextTray()}
-        </section>
-        <section class="compose-custom-tools" data-custom-template-controls hidden ${isCustomTemplate ? 'style="display:none"' : ''}>
-          <div class="compose-custom-tools__header">
-            <p class="compose-custom-tools__eyebrow">Pretext-inspired editorial controls</p>
-            <h3 class="compose-custom-tools__title">Custom Layout</h3>
-            <p class="compose-custom-tools__hint">Add, crop, and arrange image or text blocks freely on the page while keeping the page size fixed.</p>
-          </div>
-          <div class="compose-custom-tools__buttons">
-            <button class="button button--ghost" type="button" data-custom-add="image">Add Image</button>
-            <button class="button button--ghost" type="button" data-custom-add="text">Add Text</button>
-          </div>
-          <section class="compose-custom-inspector" data-custom-inspector></section>
         </section>
       </form>
+    </section>
+  `;
+}
+
+function renderCustomTools(isCustomTemplate) {
+  return `
+    <section class="compose-custom-tools" data-custom-template-controls hidden>
+      <button class="compose-sheet-resize compose-sheet-resize--start" type="button" data-compose-sheet-resize="start" aria-label="Resize custom tools sheet from left corner"></button>
+      <button class="compose-sheet-resize compose-sheet-resize--end" type="button" data-compose-sheet-resize="end" aria-label="Resize custom tools sheet from right corner"></button>
+      <div class="compose-custom-tools__header">
+        <p class="compose-custom-tools__eyebrow">Pretext-inspired editorial controls</p>
+        <h3 class="compose-custom-tools__title">Custom Layout</h3>
+        <p class="compose-custom-tools__hint">Add, crop, and arrange image or text blocks freely on the page while keeping the page size fixed.</p>
+      </div>
+      <div class="compose-custom-tools__buttons">
+        <button class="button button--ghost" type="button" data-custom-add="image">Add Image</button>
+        <button class="button button--ghost" type="button" data-custom-add="text">Add Text</button>
+      </div>
+      <section class="compose-custom-inspector" data-custom-inspector></section>
     </section>
   `;
 }
@@ -717,7 +732,7 @@ export function renderCompose(selectedTemplateId = DEFAULT_COMPOSE_TEMPLATE) {
     richTexts: draft.richTexts || {},
   };
   const selectedId = options.selectedTemplateId || draft.templateId || DEFAULT_COMPOSE_TEMPLATE;
-  const selectedBackground = options.selectedBackground || draft.backgroundColor || '#f8f4ee';
+  const selectedBackground = '#ffffff';
   const selectedFixedTags = Array.isArray(draft.fixedTags) ? draft.fixedTags : [];
   const freeTagsValue = Array.isArray(draft.freeTags) ? draft.freeTags.join(', ') : (draft.freeTags || '');
   const submitLabel = options.isEditing ? 'Update Post' : 'Post This Layout';

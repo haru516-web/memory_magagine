@@ -11,12 +11,12 @@ export const FIXED_TEMPLATE_SAFE_AREA = {
 export const FIXED_TEMPLATE_SLOT_KEYS = ['primary', 'secondary', 'accent', 'detail'];
 
 const TEXT_KEY_ORDERS = {
-  1: ['body'],
-  2: ['headline', 'body'],
-  3: ['headline', 'intro', 'body'],
-  4: ['headline', 'subhead', 'intro', 'body'],
-  5: ['headline', 'subhead', 'intro', 'body', 'date'],
-  6: ['headline', 'subhead', 'intro', 'body', 'date', 'editor'],
+  1: ['text'],
+  2: ['text', 'text2'],
+  3: ['text', 'text2', 'text3'],
+  4: ['text', 'text2', 'text3', 'intro'],
+  5: ['text', 'text2', 'text3', 'intro', 'body'],
+  6: ['text', 'text2', 'text3', 'intro', 'body', 'editor'],
 };
 
 function roughAsset(fileName) {
@@ -152,55 +152,54 @@ const RAW_FIXED_TEMPLATE_LAYOUTS = {
   page1: {
     roughUrl: roughAsset('3.png'),
     images: [
-      rawRect(0.1011, 0.0, 1.0, 0.6285),
-      rawRect(0.1004, 0.7890, 0.4038, 0.9520),
+      rawRect(0.0523, 0.0555, 0.4717, 0.2360),
+      rawRect(0.5021, 0.0555, 0.9477, 0.5150),
+      rawRect(0.4724, 0.5385, 0.9477, 0.7195),
+      rawRect(0.0523, 0.6375, 0.4052, 0.9445),
     ],
     texts: [
-      rawRect(0.2327, 0.6670, 0.8670, 0.7710),
-      rawRect(0.5304, 0.8055, 0.8989, 0.9520),
+      rawRect(0.0523, 0.2640, 0.4717, 0.4470),
+      rawRect(0.0523, 0.4755, 0.4335, 0.6120),
+      rawRect(0.4335, 0.7395, 0.9477, 0.9445),
     ],
   },
   page2: {
     roughUrl: roughAsset('4.png'),
     images: [
-      rawRect(0.0530, 0.0555, 0.4717, 0.2360),
-      rawRect(0.5021, 0.0555, 0.9477, 0.5150),
-      rawRect(0.4731, 0.5385, 0.9477, 0.7195),
-      rawRect(0.0523, 0.6375, 0.4052, 0.9445),
+      rawRect(0.0636, 0.0460, 0.4837, 0.3860),
+      rawRect(0.1351, 0.4065, 0.4837, 0.6410),
+      rawRect(0.5191, 0.5940, 0.9364, 0.9545),
     ],
     texts: [
-      rawRect(0.0530, 0.2600, 0.4717, 0.3670),
-      rawRect(0.2348, 0.3905, 0.4717, 0.4975),
-      rawRect(0.4349, 0.7395, 0.9470, 0.9445),
+      rawRect(0.5191, 0.0460, 0.9364, 0.5705),
+      rawRect(0.0997, 0.6615, 0.4837, 0.9545),
     ],
   },
   page3: {
     roughUrl: roughAsset('5.png'),
     images: [
-      rawRect(0.0651, 0.0460, 0.4837, 0.2975),
-      rawRect(0.1782, 0.3385, 0.4837, 0.5540),
-      rawRect(0.5679, 0.7630, 0.9356, 0.9540),
+      rawRect(0.0870, 0.1705, 0.4823, 0.4215),
+      rawRect(0.0870, 0.4420, 0.9123, 0.9370),
     ],
     texts: [
-      rawRect(0.5679, 0.0460, 0.9356, 0.7225),
-      rawRect(0.2412, 0.5940, 0.4837, 0.9540),
+      rawRect(0.0870, 0.0610, 0.9123, 0.1495),
+      rawRect(0.5141, 0.1705, 0.9123, 0.4215),
     ],
   },
   page4: {
     roughUrl: roughAsset('6.png'),
     images: [
-      rawRect(0.0877, 0.1605, 0.5071, 0.4120),
-      rawRect(0.0877, 0.4420, 0.9123, 0.9365),
+      rawRect(0.1004, 0.1065, 0.4823, 0.4905),
+      rawRect(0.1004, 0.5120, 0.4823, 0.8955),
     ],
     texts: [
+      rawRect(0.5184, 0.1065, 0.8996, 0.4905),
+      rawRect(0.5184, 0.5120, 0.8996, 0.8955),
+    ],
+    masks: [
       {
-        ...rawRect(0.0877, 0.0635, 0.4569, 0.1310),
-        fieldKey: 'text',
-        singleLine: false,
-      },
-      {
-        ...rawRect(0.5431, 0.2410, 0.9123, 0.4120),
-        fieldKey: 'body',
+        type: 'ellipse-cutout',
+        rect: rawRect(0.3586, 0.3900, 0.6414, 0.5900),
       },
     ],
   },
@@ -224,14 +223,14 @@ const RAW_FIXED_TEMPLATE_LAYOUTS = {
   page6: {
     roughUrl: roughAsset('8.png'),
     images: [
-      rawRect(0.1004, 0.5415, 0.4653, 0.6925),
-      rawRect(0.5347, 0.5415, 0.8996, 0.6925),
+      rawRect(0.0997, 0.4820, 0.4866, 0.7560),
+      rawRect(0.5134, 0.4820, 0.9003, 0.7560),
     ],
     texts: [
-      rawRect(0.1011, 0.1380, 0.8996, 0.4125),
-      rawRect(0.1011, 0.4330, 0.8989, 0.4950),
-      rawRect(0.1011, 0.7120, 0.4653, 0.8620),
-      rawRect(0.5347, 0.7120, 0.8996, 0.8620),
+      rawRect(0.0997, 0.0705, 0.9003, 0.3785),
+      rawRect(0.0997, 0.3915, 0.9003, 0.4690),
+      rawRect(0.0997, 0.7690, 0.4866, 0.9195),
+      rawRect(0.5134, 0.7690, 0.9003, 0.9195),
     ],
   },
   page7: {
@@ -362,54 +361,15 @@ export function getFixedTemplateTextMetrics(fieldKey, rect, textScale = 1) {
   const boxHeight = rect.height * DESIGN_HEIGHT;
   const sharedFontSize = (28 / 1.5) * 0.5;
   const sharedLineRatio = 1.35;
-  const presets = {
-    text: {
-      weight: 600,
-      fallbackStack: '"Cormorant Garamond", "Times New Roman", serif',
-      size: sharedFontSize,
-      lineRatio: sharedLineRatio,
-    },
-    headline: {
-      weight: 600,
-      fallbackStack: '"Cormorant Garamond", "Times New Roman", serif',
-      size: sharedFontSize,
-      lineRatio: sharedLineRatio,
-    },
-    subhead: {
-      weight: 500,
-      fallbackStack: '"Noto Sans JP", sans-serif',
-      size: sharedFontSize,
-      lineRatio: sharedLineRatio,
-    },
-    intro: {
-      weight: 500,
-      fallbackStack: '"Noto Sans JP", sans-serif',
-      size: sharedFontSize,
-      lineRatio: sharedLineRatio,
-    },
-    body: {
-      weight: 500,
-      fallbackStack: '"Noto Sans JP", sans-serif',
-      size: sharedFontSize,
-      lineRatio: sharedLineRatio,
-    },
-    date: {
-      weight: 500,
-      fallbackStack: '"Noto Sans JP", sans-serif',
-      size: sharedFontSize,
-      lineRatio: sharedLineRatio,
-    },
-    editor: {
-      weight: 500,
-      fallbackStack: '"Noto Sans JP", sans-serif',
-      size: sharedFontSize,
-      lineRatio: sharedLineRatio,
-    },
+  const preset = {
+    weight: 600,
+    fallbackStack: '"Cormorant Garamond", "Times New Roman", serif',
+    size: sharedFontSize,
+    lineRatio: sharedLineRatio,
   };
-  const preset = presets[fieldKey] || presets.body;
   const fontSize = preset.size * clampNumber(Number(textScale) || 1, 1, 4);
   const lineHeight = Math.max(fontSize * preset.lineRatio, fontSize + 4);
-  const letterSpacing = (fieldKey === 'text' || fieldKey === 'headline') ? fontSize * 0.03 : 0;
+  const letterSpacing = fontSize * 0.03;
   const maxLines = Math.max(1, Math.floor((boxHeight + (fontSize * 0.2)) / lineHeight));
   return {
     fontSize,
